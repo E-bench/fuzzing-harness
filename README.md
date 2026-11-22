@@ -79,7 +79,7 @@ Results of a campaign `<tag>` of target `<t>`, all under `work/<t>/`:
 |---|---|
 | `runs/<tag>/<engine>.<surface>.<id>/` | `meta.txt`, `stats.tsv` (progress), `find.tgz` (stored inputs), `corpus.tgz` |
 | `recheck/<tag>/remaining.tsv`, `inputs/` | the stored inputs on which the programs still differ on the reference builds, with their signatures and which fuzzer stored them when |
-| `recheck/<tag>/summary.json` | the counts: stored, still differing (to account for, exempt), flaky, gone |
+| `recheck/<tag>/summary.json` | the counts: stored, still differing (on the reference builds, only on the instrumented builds; to account for, exempt), flaky, gone |
 | `coverage/<tag>/COVERAGE.md` | the coverage report (all code and reachable code); next to it per-file tables, never-entered functions, one-sided conditions, annotated HTML |
 | `report/<tag>/REPORT.md` | the campaign report |
 

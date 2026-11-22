@@ -93,9 +93,14 @@ Notes:
   signatures. A patch that removes many of them made them one bug.
 - **Patches are temporary and minimal.** They exist to unmask what is behind a bug; they are not proposed fixes. The
   unpatched reference builds (`bin/<side>_ref`) are kept, and a bug's witness is always shown against them.
-- **Flaky** differences (they do not reproduce on the reference builds every time) are in `remaining.tsv` with
-  that status; they point at nondeterminism. **Gone** ones no longer differ: removed by a change, or an artefact of
-  the instrumented builds.
+- **Statuses.** The fuzzers run instrumented builds on loaded machines; the recheck replays on the reference
+  builds. A stored difference that does not show there every time is replayed on the instrumented builds as well:
+  - **fuzz-only**: every time there, not on the reference builds. The difference depends on the build (the compiler,
+    its flags); it is listed with the ones to account for.
+  - **flaky**: only in some replays. Seen causes: undefined behaviour of a program (an out-of-bounds read whose
+    result changes from run to run), and time limits passed by heavy cases on a loaded machine.
+  - **gone**: in no replay. Removed by a change since the campaign (a constraint, a normalisation, a patch), or one of
+    the flaky causes that did not happen again.
 
 ## Resources
 

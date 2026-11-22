@@ -342,12 +342,14 @@ for side in SIDES:
                 rows.append((cur, p_[0], int(p_[1]), int(p_[2]), int(p_[4]), int(p_[5]), int(p_[7]), int(p_[8])))
         names_ = sh([llvm("llvm-cxxfilt")], input="\n".join(r[1].split(":")[-1] for r in rows)).stdout.splitlines()
         seen_fn = set()
+        ran = {(fn, mangled.split(":")[-1]) for fn, mangled, reg, regmiss, lin, linmiss, br, brmiss in rows if linmiss < lin}
         for (fn, mangled, reg, regmiss, lin, linmiss, br, brmiss), dem in zip(rows, names_):
             hit = next((why for frx, mrx, why in FOOS if frx.search(dem) and mrx.search(fn)), None)
+            mangled = mangled.split(":")[-1]          # copies of one definition in several translation units
             if hit is None or (fn, mangled) in seen_fn:
                 continue
             seen_fn.add((fn, mangled))
-            if linmiss < lin:
+            if (fn, mangled) in ran:
                 warn.append(f"{short(fn)}: {dem} is configured out of scope but was executed")
                 continue
             e = excl[fn]
@@ -379,12 +381,16 @@ for side in SIDES:
         seen = set()
         rows = []
         ign = re.compile(IGNORE) if IGNORE else None
+        # One definition can have several records: template instantiations, and a copy of a static or inline
+        # function per translation unit. It was never entered only if none of them was.
+        entered = {(fn["filenames"][0], fn["regions"][0][0] if fn.get("regions") else 0)
+                   for fn in full.get("functions", []) if fn["count"] and fn.get("filenames")}
         for fn in full.get("functions", []):
             if fn["count"] or not fn.get("filenames") or (ign and ign.search(fn["filenames"][0])):
                 continue
             line = fn["regions"][0][0] if fn.get("regions") else 0
             key = (fn["filenames"][0], line)
-            if key in seen:   # template instantiations of one definition
+            if key in seen or key in entered:
                 continue
             seen.add(key)
             last = max((r[2] for r in fn.get("regions", [])), default=line)

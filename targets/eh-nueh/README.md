@@ -147,6 +147,12 @@ why the limit is there.
 | options only the rewrite has take valid values only | invalid values differ by design (`rewrite_option_errors`) | the rewrite's error paths for these options, tampered catalog caches |
 | streaming mode | the configured command line (`[run] argv`) | seeking mode |
 
+Not a limit of the generator, but of the machines: the rewrite chooses its SIMD kernels by CPU. On the machines
+used (all with AVX2, some with AVX-512BW) the AVX2 kernels, the AVX-512 insertion scan and the SSE2 base-run kernel
+run and are covered; the SSE2 tier of the DP row passes and the scalar fallbacks never run. They need a CPU without
+AVX2, or one of the rewrite's verification builds (`EH_VERIFY=SIMD=SCALAR`, `SSE42`), which are other builds than
+the one tested here.
+
 ## Notes on both programs
 
 - **`--region-extension-length` is never rejected.** v5.0.0 means to accept 500 to 1500 only

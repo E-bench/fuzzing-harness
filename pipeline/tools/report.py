@@ -44,7 +44,7 @@ except OSError:
 cov = load(os.path.join(work, "coverage", tag, "coverage.json"))
 engines = sorted({r["engine"] for r in runs})
 surfaces = sorted({r["surface"] for r in runs})
-open_ = [r for r in remaining if r[0] == "differs" and not r[3]]
+open_ = [r for r in remaining if r[0] in ("differs", "fuzz-only") and not r[3]]
 
 
 def found_by(r):
@@ -62,7 +62,8 @@ if rck:
     L += [f"The harness stored {rck['stored']:,} difference signatures. Replayed on the reference builds under the current configuration"
           + (f" (with the temporary patches of {', '.join(rck['patched'])})" if rck.get("patched") else "") + ",",
           f"**{rck['to_account_for']:,} still differ and are not accounted for**, {rck['exempt']:,} still differ and fall under an exemption,",
-          f"{rck['flaky']:,} differ only in some replays and {rck['gone']:,} no longer differ."]
+          f"{rck['flaky']:,} differ only in some replays and {rck['gone']:,} no longer differ."
+          + (f" Of those to account for, {rck['fuzz_only']:,} differ only on the instrumented builds (the difference depends on the build)." if rck.get("fuzz_only") else "")]
 L.append("")
 
 L += ["## Fuzzers", "", "| Fuzzer | Runs | CPU hours | Test cases | per CPU second | Corpus | Signatures stored |" + (" Open differences | Only this fuzzer | Median seconds to find |" if rck else "") +

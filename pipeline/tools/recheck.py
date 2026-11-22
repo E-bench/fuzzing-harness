@@ -12,8 +12,11 @@ still differs with the known bugs patched away.
     unpack runs/<tag>/*/find.tgz; replay up to two stored inputs per signature `repeat` times:
       differs      a difference in the same outputs every time (the signature shown is the replayed one)
       flaky        only in some replays
-      gone         in none: removed by a constraint, an exemption's cause, a normalisation or a patch, or it never
-                   existed on the reference builds
+      fuzz-only    not on the reference builds every time, but every time on the instrumented builds the fuzzers ran
+                   (bin/<side>_fuzz): the difference depends on the build (compiler, flags), which is a finding to
+                   look at, not noise
+      gone         in none: removed by a constraint, an exemption's cause, a normalisation or a patch, or an effect
+                   of load or of undefined behaviour that does not repeat
   merge (one process)
     recheck/<tag>/remaining.tsv   the inputs that still differ, not exempt first: status, signature, exempt reason,
                                   which fuzzers stored it, the input (recheck/<tag>/inputs/<name>.bin)
@@ -62,6 +65,11 @@ def replay_phase():
     shutil.copytree(os.path.join(a.work, "data"), os.path.join(local, "data"), symlinks=True, ignore=shutil.ignore_patterns(".*"))
     env0 = dict(os.environ, DFZ_A=os.path.join(local, A), DFZ_B=os.path.join(local, B), DFZ_DATA=os.path.join(local, "data"),
                 DFZ_CFG=os.path.join(local, "harness.cfg"))
+    # the instrumented builds, for differences that do not show on the reference builds
+    fuzz = all(os.path.exists(os.path.join(a.work, "bin", s + "_fuzz")) for s in (A, B))
+    if fuzz:
+        for s in (A, B):
+            shutil.copy2(os.path.join(a.work, "bin", s + "_fuzz"), os.path.join(local, s + "_fuzz"))
     for k in ("DFZ_A_MAP", "DFZ_B_MAP", "DFZ_FIND", "DFZ_NOFEEDBACK"):
         env0.pop(k, None)
     slots = list(range(a.jobs))
@@ -104,8 +112,8 @@ def replay_phase():
         try:
             surface, _, atoms = split_sig(sig)
             env = dict(env0, DFZ_SURFACE=s["surface"], DFZ_WORK=os.path.join(scratch, "work", str(slot)))
-            best = (0, None, "")
-            for inp in s["inputs"][:2]:
+
+            def replays(inp, env):   # in how many of `repeat` replays the difference shows, and as which signature
                 same, seen = 0, collections.Counter()
                 for _ in range(a.repeat):
                     lines = subprocess.run([os.path.join(local, "dfz_tool"), "sig", inp], env=env, capture_output=True, text=True, errors="replace").stdout.splitlines()
@@ -113,12 +121,23 @@ def replay_phase():
                     alike = [g for g in got if split_sig(g)[2] == atoms] or [g for g in got if kind(split_sig(g)[2]) == kind(atoms)]
                     same += bool(alike)
                     seen.update(alike[:1])
+                return same, (seen.most_common(1)[0][0] if seen else "")
+
+            best = (0, None, "")
+            for inp in s["inputs"][:2]:
+                same, now = replays(inp, env)
                 if same > best[0]:
-                    best = (same, inp, seen.most_common(1)[0][0])
+                    best = (same, inp, now)
                 if same == a.repeat:
                     break
             same, inp, now = best
-            return sig, ("differs" if same == a.repeat else "flaky" if same else "gone"), inp, now
+            status = "differs" if same == a.repeat else "flaky" if same else "gone"
+            if status != "differs" and fuzz and s["inputs"]:
+                fenv = dict(env, DFZ_A=os.path.join(local, A + "_fuzz"), DFZ_B=os.path.join(local, B + "_fuzz"))
+                fsame, fnow = replays(inp or s["inputs"][0], fenv)
+                if fsame == a.repeat:
+                    status, inp, now = "fuzz-only", inp or s["inputs"][0], fnow
+            return sig, status, inp, now
         finally:
             slots.append(slot)
 
@@ -152,19 +171,21 @@ def merge_phase():
             now = s["now"] or sig
             exempt = next((reason for rx, reason in RULES if rx.search(now) or rx.search(sig)), "")
             shutil.copy(os.path.join(sd, d, "inputs", s["input"]), os.path.join(out, "inputs", s["input"]))
-            rows.append((bool(exempt), s["status"] != "differs", now, s["status"], exempt, " ".join(f"{e}:{t}" for e, t in sorted(s["engines"].items())), s["input"], s["surface"]))
-            count["exempt" if exempt else "to account for"] += s["status"] == "differs"
+            order = {"differs": 0, "fuzz-only": 1, "flaky": 2}[s["status"]]
+            rows.append((bool(exempt), order, now, s["status"], exempt, " ".join(f"{e}:{t}" for e, t in sorted(s["engines"].items())), s["input"], s["surface"]))
+            count["exempt" if exempt else "to account for"] += s["status"] in ("differs", "fuzz-only")
     rows.sort()
     with open(os.path.join(out, "remaining.tsv"), "w") as f:
         f.write("status\tsurface\tsignature\texempt\tfuzzers(first_seconds)\tinput\n")
         for _, _, now, status, exempt, engines, inp, surface in rows:
             f.write("\t".join([status, surface, now, exempt, engines, "inputs/" + inp]) + "\n")
-    summary = {"stored": sum(count[k] for k in ("differs", "flaky", "gone")), "differs": count["differs"], "flaky": count["flaky"], "gone": count["gone"],
+    summary = {"stored": sum(count[k] for k in ("differs", "fuzz-only", "flaky", "gone")), "differs": count["differs"], "fuzz_only": count["fuzz-only"],
+               "flaky": count["flaky"], "gone": count["gone"],
                "to_account_for": count["to account for"], "exempt": count["exempt"], "patched": PATCHED}
     json.dump(summary, open(os.path.join(out, "summary.json"), "w"), indent=1)
     shutil.rmtree(sd, ignore_errors=True)
-    print(f"stored {summary['stored']}: still differ {summary['differs']} ({summary['to_account_for']} to account for, {summary['exempt']} exempt), "
-          f"flaky {summary['flaky']}, gone {summary['gone']}" + (f"; patched builds of {', '.join(PATCHED)}" if PATCHED else "") + f" -> {out}/remaining.tsv")
+    print(f"stored {summary['stored']}: still differ {summary['differs']} on the reference builds and {summary['fuzz_only']} only on the instrumented builds "
+          f"({summary['to_account_for']} to account for, {summary['exempt']} exempt), flaky {summary['flaky']}, gone {summary['gone']}" + (f"; patched builds of {', '.join(PATCHED)}" if PATCHED else "") + f" -> {out}/remaining.tsv")
 
 
 if a.phase == "all":
