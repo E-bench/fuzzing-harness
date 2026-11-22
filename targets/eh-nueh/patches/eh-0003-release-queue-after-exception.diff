@@ -1,0 +1,37 @@
+--- a/ehunter/sample/HtsStreamingSampleAnalysis.cpp
++++ b/ehunter/sample/HtsStreamingSampleAnalysis.cpp
+@@ -77,8 +77,18 @@
+     const int threadIndex, LocusAnalyzerThreadSharedData& locusAnalyzerThreadSharedData,
+     std::vector<LocusAnalyzerThreadLocalData>& locusAnalyzerThreadLocalDataPool, const unsigned locusIndex)
+ {
++    // After an exception in any worker, the queue of this locus is emptied and released instead of processed: a queue
++    // left active is never released, and the reading thread waits forever once too many are active.
++    auto releaseQueue = [&]() {
++        boost::optional<HtsStreamingReadPairQueue::ReadPair> discarded;
++        do
++        {
++            locusAnalyzerThreadSharedData.readPairQueue.getNextReadPair(locusIndex, discarded);
++        } while (discarded);
++    };
+     if (locusAnalyzerThreadSharedData.isWorkerThreadException.load())
+     {
++        releaseQueue();
+         return;
+     }
+ 
+@@ -115,6 +125,7 @@
+         }
+         oss << ": " << e.what();
+         spdlog::error(oss.str());
++        releaseQueue();
+         throw;
+     }
+     catch (...)
+@@ -130,6 +141,7 @@
+             oss << " current readPair: `" << readPair->read.fragmentId() << "`";
+         }
+         spdlog::error(oss.str());
++        releaseQueue();
+         throw;
+     }
+ }

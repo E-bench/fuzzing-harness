@@ -1,0 +1,4 @@
+work/
+env.local.sh
+__pycache__/
+remote.local.sh

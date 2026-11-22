@@ -1,0 +1,11 @@
+--- a/ehunter/sample/GenomeMask.cpp
++++ b/ehunter/sample/GenomeMask.cpp
+@@ -37,7 +37,7 @@
+ 
+ bool GenomeMask::query(int32_t contigId, int64_t pos) const
+ {
+-    if (contigId >= static_cast<int>(mask_.size()))
++    if (contigId < 0 || contigId >= static_cast<int>(mask_.size()))
+     {
+         return false;
+     }

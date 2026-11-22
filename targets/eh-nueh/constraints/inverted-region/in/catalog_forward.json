@@ -1,0 +1,10 @@
+[
+{
+    "LocusId": "L0",
+    "LocusStructure": "(CAG)*",
+    "ReferenceRegion": "chr1:1300-1330",
+    "VariantType": "Repeat",
+    "TargetRegion": "chr1:200-2430",
+    "MinimalLocusCoverage": 0
+}
+]

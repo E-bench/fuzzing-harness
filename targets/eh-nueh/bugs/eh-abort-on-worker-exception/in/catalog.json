@@ -1,0 +1,8 @@
+[
+{
+    "LocusId": "L0",
+    "LocusStructure": "(CAG)*CAACAG(AT)*",
+    "ReferenceRegion": ["chr1:1300-1330", "chr1:1336-1348"],
+    "VariantType": ["RareRepeat", "RareRepeat"]
+}
+]

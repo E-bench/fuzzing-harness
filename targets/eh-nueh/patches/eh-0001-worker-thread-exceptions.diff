@@ -1,0 +1,88 @@
+--- a/ehunter/locus/LocusAnalyzerUtil.cpp
++++ b/ehunter/locus/LocusAnalyzerUtil.cpp
+@@ -95,7 +95,6 @@
+ 
+         spdlog::error(
+             "Exception caught in thread {}  while initializing locus: {} : {}", threadIndex, locusId, e.what());
+-        throw;
+     }
+     catch (...)
+     {
+@@ -103,7 +102,6 @@
+         locusThreadData.threadExceptionPtr = std::current_exception();
+ 
+         spdlog::error("Exception caught in thread {}  while initializing locus: {}", threadIndex, locusId);
+-        throw;
+     }
+ }
+ 
+@@ -130,7 +128,12 @@
+             std::ref(locusInitThreadLocalDataPool));
+     }
+ 
+-    // Rethrow exceptions from worker pool in thread order:
++    for (auto& initThread : initThreads)
++    {
++        initThread.join();
++    }
++
++    // Rethrow exceptions from the worker threads in thread order, once they have all finished:
+     if (locusInitThreadSharedData.isWorkerThreadException.load())
+     {
+         for (int threadIndex(0); threadIndex < threadCount; ++threadIndex)
+@@ -143,11 +146,6 @@
+         }
+     }
+ 
+-    for (auto& initThread : initThreads)
+-    {
+-        initThread.join();
+-    }
+-
+     return locusAnalyzers;
+ }
+ 
+--- a/ehunter/sample/HtsStreamingSampleAnalysis.cpp
++++ b/ehunter/sample/HtsStreamingSampleAnalysis.cpp
+@@ -193,7 +193,6 @@
+         sampleFindingsThreadData.threadExceptionPtr = std::current_exception();
+ 
+         spdlog::error("Exception caught in thread {} while analyzing locus: {} : {}", threadIndex, locusId, e.what());
+-        throw;
+     }
+     catch (...)
+     {
+@@ -201,7 +200,6 @@
+         sampleFindingsThreadData.threadExceptionPtr = std::current_exception();
+ 
+         spdlog::error("Unknown exception caught in thread {} while analyzing locus: {}", threadIndex, locusId);
+-        throw;
+     }
+ }
+ 
+@@ -336,7 +334,12 @@
+             std::ref(sampleFindingsThreadLocalDataPool));
+     }
+ 
+-    // Rethrow exceptions from worker pool in thread order:
++    for (int threadIndex(0); threadIndex < threadCount; ++threadIndex)
++    {
++        sampleFindingsThreads[threadIndex].join();
++    }
++
++    // Rethrow exceptions from the worker threads in thread order, once they have all finished:
+     if (sampleFindingsThreadSharedData.isWorkerThreadException.load())
+     {
+         for (int threadIndex(0); threadIndex < threadCount; ++threadIndex)
+@@ -349,11 +352,6 @@
+         }
+     }
+ 
+-    for (int threadIndex(0); threadIndex < threadCount; ++threadIndex)
+-    {
+-        sampleFindingsThreads[threadIndex].join();
+-    }
+-
+     return sampleFindings;
+ }
+ 

@@ -1,0 +1,9 @@
+2026-11-21T20:43:50,[Starting ExpansionHunter v5.0.0]
+2026-11-21T20:43:50,[Analyzing sample reads]
+2026-11-21T20:43:50,[Initializing reference /dev/shm/dfz_exp_2441153/2441302/case/in/ref.fa]
+2026-11-21T20:43:50,[Loading variant catalog from disk /dev/shm/dfz_exp_2441153/2441302/case/in/catalog.json]
+2026-11-21T20:43:50,[Running sample analysis in streaming mode]
+2026-11-21T20:43:50,[Initializing all loci]
+2026-11-21T20:43:50,[Exception caught in thread 0  while initializing locus: L0 : Region L0 must not have more than one rare repeat]
+terminate called after throwing an instance of 'std::logic_error'
+  what():  Region L0 must not have more than one rare repeat

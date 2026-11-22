@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Entry point:  ./dfz <command> <target> [NAME=value ...] [-- options of the step]
+#   tools                          fetch and build the fuzzers                     (no target)
+#   build    <target> [STEPS=..]   fetch, deps, ref, fuzz, cov, harness, data
+#   fuzz     <target> ENGINE=.. SURFACE=.. TAG=.. DUR=..    one fuzzer on this machine
+#   submit   <target> TAG=.. [ENGINES=..] [SURFACES=..] [DUR=..] [NCPU=..]   a campaign on Slurm
+#   recheck  <target> TAG=..       replay the stored differences under the current configuration: which inputs still differ
+#   stop     <target> TAG=..       end a running campaign early, keeping its results
+#   coverage <target> TAG=..       replay the corpora on the coverage builds, write COVERAGE.md
+#   report   <target> TAG=..       write REPORT.md
+#   post     <target> TAG=..       recheck, coverage, report and check of a finished campaign (parallel Slurm jobs)
+#   check    <target> TAG=..       verify that a campaign and its post-processing produced everything
+#   replay   <target> SURFACE=.. <input>          run one input on the reference builds and show the differences
+#   export   <target> SURFACE=.. <input> <dir>    the same input as a witness directory (input files, run.sh, outputs)
+#            (PATCHED=1: use the patched reference builds)
+set -euo pipefail
+ROOT=$(cd "$(dirname "$0")" && pwd)
+cmd=${1:?usage: ./dfz <command> <target> [NAME=value ...]}; shift
+if [ "$cmd" = tools ]; then exec bash "$ROOT/pipeline/steps/tools.sh"; fi
+export DFZ_TARGET=${1:?target}; shift
+rest=()
+while [ $# -gt 0 ]; do
+  case $1 in --) shift; rest+=("$@"); break;; [A-Z_]*=*) export "$1";; *) rest+=("$1");; esac; shift
+done
+case $cmd in
+build|submit|stop|recheck|coverage|report|post|check) exec bash "$ROOT/pipeline/steps/$cmd.sh" "${rest[@]}";;
+fuzz) exec bash "$ROOT/pipeline/steps/campaign.sh";;
+replay|export)   # one input on the reference builds: show the differences / write a witness directory
+  source "$ROOT/pipeline/env.sh"
+  export DFZ_A=$T/bin/${CFG_A_NAME}_ref DFZ_B=$T/bin/${CFG_B_NAME}_ref DFZ_DATA=$T/data DFZ_SURFACE=${SURFACE:?} DFZ_WORK=${TMPDIR:-/tmp}/dfz_one_$$
+  [ -n "${PATCHED:-}" ] && { [ -x "$T/bin/${CFG_A_NAME}_refp" ] && DFZ_A=$T/bin/${CFG_A_NAME}_refp; [ -x "$T/bin/${CFG_B_NAME}_refp" ] && DFZ_B=$T/bin/${CFG_B_NAME}_refp; }
+  exec "$T/bin/dfz_tool" "$cmd" "${rest[@]}";;
+*) echo "unknown command $cmd" >&2; exit 2;;
+esac
