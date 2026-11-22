@@ -126,6 +126,7 @@ struct Config {
     string surface, binA, binB, nameA = "a", nameB = "b", work, find, data, childEnv;
     size_t mapA = 0, mapB = 0;
     int timeoutMs = 20000, cap = 4;
+    long memoryMb = 0;         // limit of a program run's resident memory (0: none)
     bool verbose = false, keep = false;
     vector<string> argv, argvA, argvB, env, errorPrefix;
     vector<OutputSpec> outputs;
@@ -174,16 +175,12 @@ inline Config &cfg() {
     c.cap = atoi(envs("DFZ_CAP", "4").c_str());
     c.verbose = !envs("DFZ_VERBOSE").empty();
     c.keep = !envs("DFZ_KEEP").empty();
-    // memory_mb: address-space limit of this process and so of the programs it starts. An input that makes a program
-    // allocate without bound then fails the same way everywhere (allocation failure) instead of meeting the machine's
-    // out-of-memory killer.
+    // memory_mb: limit of the resident memory of one program run; runProg ends a run that passes it (class
+    // `memory`). An input that makes a program allocate without bound then has the same result everywhere, instead
+    // of meeting the machine's out-of-memory killer, which ends whichever process of the job is largest.
     auto mm = c.kv.find("memory_mb");
-    long mem = mm == c.kv.end() ? 0 : atol(mm->second.c_str());
-    if (getenv("DFZ_MEMORY_MB")) mem = atol(getenv("DFZ_MEMORY_MB"));
-    if (mem > 0) {
-        struct rlimit rl = {(rlim_t)mem << 20, (rlim_t)mem << 20};
-        setrlimit(RLIMIT_AS, &rl);
-    }
+    c.memoryMb = mm == c.kv.end() ? 0 : atol(mm->second.c_str());
+    if (getenv("DFZ_MEMORY_MB")) c.memoryMb = atol(getenv("DFZ_MEMORY_MB"));
     return c;
 }
 // options of the target's [adapter] table and of the current [surface.<name>] table
@@ -215,13 +212,15 @@ struct Case {
     void put(const string &name, const string &content) const { writeFile(in + "/" + name, content); }
 };
 struct Run {
-    string cls;                // ok | err | sig<N> | timeout | spawnfail
+    string cls;                // ok | err | sig<N> | timeout | memory | spawnfail (timeout, memory: ended by the harness)
     int code = 0;              // exit code when cls is ok or err
     string msg;                // normalised error line of a failed run
     string out;                // this side's output directory
     string log;                // file with stdout and stderr
     vector<unsigned char> cov; // coverage map of the child (empty when not instrumented)
     long ms = 0;
+    long peakMb = 0;           // largest resident memory seen while it ran (sampled)
+    long cpuMs = 0;            // CPU time of the program, all its threads (user + system); `ms` is wall time
 };
 struct Finding {
     string atoms;  // sorted, space separated
@@ -237,7 +236,10 @@ struct Outcome {
 //   dfz_decode     turn fuzz bytes into a test case; false = not a valid input for this surface
 //   dfz_normalize  rewrite an output file's content before it is compared (e.g. a binary format to canonical text);
 //                  return false to leave it unchanged. `side` is 0 for a, 1 for b.
-//   dfz_compare    add target-specific findings after the configured comparison
+//   dfz_compare    the last word on what counts as a difference for this case: runs after the configured
+//                  comparison with the case, both runs and the findings so far, and may add findings or remove
+//                  one that the rewrite documents as intended (an exemption). A finding that is removed is neither
+//                  stored nor fed back to the fuzzer
 bool dfz_decode(const uint8_t *data, size_t size, dfz::Case &c);
 bool dfz_normalize(const dfz::Case &c, const std::string &file, int side, std::string &content);
 void dfz_compare(const dfz::Case &c, const dfz::Run &a, const dfz::Run &b, std::vector<dfz::Finding> &out);
@@ -331,21 +333,42 @@ inline Run runProg(const string &bin, const string &sideName, const vector<strin
     posix_spawn_file_actions_destroy(&fa);
     if (rc != 0) { r.cls = "spawnfail"; return r; }
     int status = 0;
+    // Wall time depends on what else the machine runs; the CPU time says how much the program itself worked.
+    struct rusage ru;
+    auto reap = [&](int flags) {
+        pid_t w = wait4(pid, &status, flags, &ru);
+        if (w == pid) r.cpuMs = (ru.ru_utime.tv_sec + ru.ru_stime.tv_sec) * 1000 + (ru.ru_utime.tv_usec + ru.ru_stime.tv_usec) / 1000;
+        return w;
+    };
     struct timespec t0, t1;
     clock_gettime(CLOCK_MONOTONIC, &t0);
+    static const long pageKb = sysconf(_SC_PAGESIZE) / 1024;
+    const string statm = "/proc/" + std::to_string(pid) + "/statm";
     for (;;) {
-        pid_t w = waitpid(pid, &status, WNOHANG);
+        pid_t w = reap(WNOHANG);
         clock_gettime(CLOCK_MONOTONIC, &t1);
         r.ms = (t1.tv_sec - t0.tv_sec) * 1000 + (t1.tv_nsec - t0.tv_nsec) / 1000000;
         if (w == pid) break;
         if (w < 0 && errno != EINTR) { r.cls = "waitfail"; return r; }
+        // resident memory: the second number of /proc/<pid>/statm, in pages
+        if (FILE *f = fopen(statm.c_str(), "r")) {
+            long total = 0, resident = 0;
+            if (fscanf(f, "%ld %ld", &total, &resident) == 2) r.peakMb = std::max(r.peakMb, resident * pageKb / 1024);
+            fclose(f);
+        }
+        if (C.memoryMb > 0 && r.peakMb > C.memoryMb) {
+            kill(pid, SIGKILL);
+            reap(0);
+            r.cls = "memory";
+            return r;
+        }
         if (r.ms > C.timeoutMs) {
-            // SIGTERM first, so that a coverage build can still write its profile; SIGKILL 300 ms later
+            // SIGTERM first, so that a program can clean up; SIGKILL 300 ms later
             kill(pid, SIGTERM);
-            for (int i = 0; i < 150 && waitpid(pid, &status, WNOHANG) != pid; i++) {
+            for (int i = 0; i < 150 && reap(WNOHANG) != pid; i++) {
                 struct timespec ts = {0, 2000000};
                 nanosleep(&ts, nullptr);
-                if (i == 149) { kill(pid, SIGKILL); waitpid(pid, &status, 0); }
+                if (i == 149) { kill(pid, SIGKILL); reap(0); }
             }
             r.cls = "timeout";
             return r;
@@ -669,6 +692,11 @@ inline bool runInput(const uint8_t *d, size_t n, Case &c, Outcome &o) {
 inline void store(const Case &c, const Outcome &o, const uint8_t *d, size_t n) {
     const Config &C = cfg();
     if (C.find.empty()) return;
+    // A campaign that is being stopped kills the programs under the harness; what a killed program leaves behind is
+    // not a finding. The campaign creates this file before it sends any signal.
+    static const char *stopFile = getenv("DFZ_STOP_FILE");
+    struct stat stopped;
+    if (stopFile && stat(stopFile, &stopped) == 0) return;
     for (const Finding &f : o.findings) {
         string sig = signature(c, f), dir = C.find + "/" + hex16(fnv(sig));
         struct stat st;

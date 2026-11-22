@@ -37,6 +37,7 @@ def shell(c):
     out["CFG_REF_CC"] = b.get("ref", {}).get("cc", "gcc")
     out["CFG_REF_CXX"] = b.get("ref", {}).get("cxx", "g++")
     out["CFG_HARNESS_LIBS"] = b.get("harness_libs", "")
+    out["CFG_SAN_FLAGS"] = b.get("san_flags", "")
     out["CFG_ADAPTER"] = b.get("adapter", "adapter.cpp")
     out["CFG_SURFACES"] = " ".join(c["surface"].keys())
     for name, s in c["surface"].items():
@@ -47,6 +48,7 @@ def shell(c):
     cov = c.get("coverage", {})
     out["CFG_COV_IGNORE"] = cov.get("ignore", "")
     out["CFG_TIMEOUT_MS"] = str(c["run"].get("timeout_ms", 20000))
+    out["CFG_MEMORY_MB"] = str(c["run"].get("memory_mb", 0))
     return "\n".join(f"export {k}={shlex.quote(v)}" for k, v in out.items())
 
 

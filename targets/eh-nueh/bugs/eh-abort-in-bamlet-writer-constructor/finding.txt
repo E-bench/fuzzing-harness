@@ -1,0 +1,14 @@
+surface: locus
+tags: ext1
+note: 1 loci: L0@chr1:0-15{R:CNG:ref5:5/5 }; 56 records, read length 150, fragment 400
+eh: sig6 
+nueh: err [Invalid_region_string:_chr#:-#-#]
+FINDING locus [ext1] exit:eh=sig6,nueh=err msg_nueh:[Invalid_region_string:_chr#:-#-#]
+eh: sig6
+    2026-11-22T03:20:46,[Initializing reference /tmp/dfz_one_1764566/1764566/case/in/ref.fa]
+    2026-11-22T03:20:46,[Loading variant catalog from disk /tmp/dfz_one_1764566/1764566/case/in/catalog.json]
+    terminate called without an active exception
+nueh: err (exit 1)
+    2026-11-22T03:20:47,[Initializing reference /tmp/dfz_one_1764566/1764566/case/in/ref.fa]
+    2026-11-22T03:20:47,[Loading variant catalog from disk /tmp/dfz_one_1764566/1764566/case/in/catalog.json]
+    2026-11-22T03:20:47,[Invalid region string: chr1:-1-0]

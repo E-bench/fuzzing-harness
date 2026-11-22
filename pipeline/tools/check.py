@@ -73,16 +73,23 @@ for s in surfaces:
                 check(False, f"run {d} executes at a plausible rate", f"{r:.2f} cases per CPU second, median of the surface {med:.2f}", warn=True)
 
 # ---- differences
+ss = os.path.join(work, "sanitize", tag, "summary.json")
+if os.path.isfile(ss):
+    s = json.load(open(ss))
+    check(s["replayed"] > 0, "the inputs were replayed on the sanitizer builds", str(s))
+    print(f"      sanitizers: {s['replayed']} inputs replayed, kinds of report by program: {s['by_program']}")
+else:
+    print("skip  no sanitizer replay (sanitize/<tag>/summary.json): ./dfz sanitize")
 sj = os.path.join(work, "recheck", tag, "summary.json")
 check(os.path.isfile(sj), "the differences were rechecked (recheck/<tag>/summary.json)")
 if os.path.isfile(sj):
     s = json.load(open(sj))
-    check(s["stored"] == s["differs"] + s.get("fuzz_only", 0) + s["flaky"] + s["gone"], "every stored signature has a status", str(s))
+    check(s["stored"] == s["differs"] + s.get("fuzz_only", 0) + s["flaky"] + s.get("timeout", 0) + s.get("memory", 0) + s["gone"], "every stored signature has a status", str(s))
     rows = [l.rstrip("\n").split("\t") for l in open(os.path.join(work, "recheck", tag, "remaining.tsv"))][1:]
-    bad = [r[5] for r in rows if not os.path.isfile(os.path.join(work, "recheck", tag, r[5]))]
+    bad = [r[4] for r in rows if not os.path.isfile(os.path.join(work, "recheck", tag, r[4]))]
     check(not bad, f"every remaining difference has its input ({len(rows)} listed)", " ".join(bad[:5]))
     check(s["flaky"] <= max(5, s["stored"] // 20), "few differences are flaky", str(s), warn=True)
-    print(f"      differences: {s['stored']} stored, {s['to_account_for']} to account for ({s.get('fuzz_only', 0)} of them only on the instrumented builds), {s['exempt']} exempt, {s['flaky']} flaky, {s['gone']} gone")
+    print(f"      differences: {s['stored']} stored, {s['to_account_for']} to account for, {s.get('timeout_deferred', 0) + s.get('memory_deferred', 0)} put off (only the original passed a limit), {s['flaky']} flaky, {s['gone']} gone")
 
 # ---- coverage
 cj = os.path.join(work, "coverage", tag, "coverage.json")

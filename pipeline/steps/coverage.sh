@@ -9,7 +9,8 @@ TAG=${TAG:?}; SHARDS=${SHARDS:-$(dfz_shards)}
 PY=(python3 -I "$DFZ_ROOT/pipeline/tools/coverage.py" "$T" "$TAG" "$TARGET_DIR/target.toml" --jobs "$NPROC")
 if [ -n "${PHASE:-}" ]; then exec "${PY[@]}" --phase "$PHASE" --shard "${SHARD:-0/1}" "$@"; fi
 if [ "$SHARDS" -le 1 ]; then exec "${PY[@]}" "$@"; fi
-rm -rf "$T/coverage/$TAG"; mkdir -p "$T/coverage/$TAG"
+scancel -u "$USER" -n "dfz_cov_$TAG" 2>/dev/null   # an earlier submission of this step and tag would write into the same directory
+rm -rf "$T/coverage/$TAG/.shards"; mkdir -p "$T/coverage/$TAG"   # the results of an earlier run stay until the last job replaces them
 me="DFZ_TARGET=$DFZ_TARGET TAG=$TAG bash $DFZ_ROOT/pipeline/steps/coverage.sh $*"
 sb=(sbatch --parsable $DFZ_SBATCH -J "dfz_cov_$TAG" -c "$DFZ_JOB_CPUS" --mem="${MEM:-$(dfz_mem)}" -t "${LIMIT:-240}")
 ids=

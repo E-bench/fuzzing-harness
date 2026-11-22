@@ -1,18 +1,22 @@
 #!/usr/bin/env bash
 # Entry point:  ./dfz <command> <target> [NAME=value ...] [-- options of the step]
 #   tools                          fetch and build the fuzzers                     (no target)
-#   build    <target> [STEPS=..]   fetch, deps, ref, fuzz, cov, harness, data
+#   build    <target> [STEPS=..]   fetch, deps, ref, refp, fuzz, cov, san, harness, data
 #   fuzz     <target> ENGINE=.. SURFACE=.. TAG=.. DUR=..    one fuzzer on this machine
 #   submit   <target> TAG=.. [ENGINES=..] [SURFACES=..] [DUR=..] [NCPU=..]   a campaign on Slurm
 #   recheck  <target> TAG=..       replay the stored differences under the current configuration: which inputs still differ
 #   stop     <target> TAG=..       end a running campaign early, keeping its results
 #   coverage <target> TAG=..       replay the corpora on the coverage builds, write COVERAGE.md
+#   sanitize <target> TAG=..       replay the inputs on the sanitizer builds: memory errors, undefined behaviour
 #   report   <target> TAG=..       write REPORT.md
 #   post     <target> TAG=..       recheck, coverage, report and check of a finished campaign (parallel Slurm jobs)
 #   check    <target> TAG=..       verify that a campaign and its post-processing produced everything
 #   replay   <target> SURFACE=.. <input>          run one input on the reference builds and show the differences
 #   export   <target> SURFACE=.. <input> <dir>    the same input as a witness directory (input files, run.sh, outputs)
-#            (PATCHED=1: use the patched reference builds)
+#   decode   <target> SURFACE=.. <input> <dir>    only write the input files and print the options; runs nothing
+#   run      <target> SURFACE=.. <inputs or directories>   many inputs: counts by exit class, largest memory, longest time
+#            (the last four: BUILD=refp|fuzz|cov|san takes another build flavour than the reference builds;
+#             PATCHED=1 is BUILD=refp)
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")" && pwd)
 cmd=${1:?usage: ./dfz <command> <target> [NAME=value ...]}; shift
@@ -23,12 +27,18 @@ while [ $# -gt 0 ]; do
   case $1 in --) shift; rest+=("$@"); break;; [A-Z_]*=*) export "$1";; *) rest+=("$1");; esac; shift
 done
 case $cmd in
-build|submit|stop|recheck|coverage|report|post|check) exec bash "$ROOT/pipeline/steps/$cmd.sh" "${rest[@]}";;
+build|submit|stop|recheck|coverage|sanitize|report|post|check) exec bash "$ROOT/pipeline/steps/$cmd.sh" "${rest[@]}";;
 fuzz) exec bash "$ROOT/pipeline/steps/campaign.sh";;
-replay|export)   # one input on the reference builds: show the differences / write a witness directory
+replay|export|decode|run)
+  # one input: show the differences (replay) / write a witness directory (export <input> <dir>) / only write its input
+  # files and print its options, running nothing (decode <input> <dir>); many inputs: the counts by exit class, the
+  # largest memory and the longest time of both programs (run <files or directories>).
+  # On the reference builds; BUILD=refp|fuzz|cov|san takes another flavour (PATCHED=1 is BUILD=refp).
   source "$ROOT/pipeline/env.sh"
-  export DFZ_A=$T/bin/${CFG_A_NAME}_ref DFZ_B=$T/bin/${CFG_B_NAME}_ref DFZ_DATA=$T/data DFZ_SURFACE=${SURFACE:?} DFZ_WORK=${TMPDIR:-/tmp}/dfz_one_$$
-  [ -n "${PATCHED:-}" ] && { [ -x "$T/bin/${CFG_A_NAME}_refp" ] && DFZ_A=$T/bin/${CFG_A_NAME}_refp; [ -x "$T/bin/${CFG_B_NAME}_refp" ] && DFZ_B=$T/bin/${CFG_B_NAME}_refp; }
+  b=${BUILD:-ref}; [ -n "${PATCHED:-}" ] && b=refp
+  export DFZ_A=$T/bin/${CFG_A_NAME}_$b DFZ_B=$T/bin/${CFG_B_NAME}_$b DFZ_DATA=$T/data DFZ_SURFACE=${SURFACE:?} DFZ_WORK=${TMPDIR:-/tmp}/dfz_one_$$
+  [ -x "$DFZ_A" ] || DFZ_A=$T/bin/${CFG_A_NAME}_ref; [ -x "$DFZ_B" ] || DFZ_B=$T/bin/${CFG_B_NAME}_ref
+  [ "$b" = san ] && export DFZ_CHILD_ENV="ASAN_OPTIONS=abort_on_error=1:detect_leaks=0:handle_abort=1:symbolize=1;UBSAN_OPTIONS=halt_on_error=1:abort_on_error=1:print_stacktrace=1"
   exec "$T/bin/dfz_tool" "$cmd" "${rest[@]}";;
 *) echo "unknown command $cmd" >&2; exit 2;;
 esac

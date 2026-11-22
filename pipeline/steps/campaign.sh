@@ -21,7 +21,9 @@ RUN=$T/runs/$TAG/$ENGINE.$SURFACE.$ID; mkdir -p "$RUN"
 W=${TMPDIR:-/tmp}/dfz_$ID; SHM=$W/work; [ -w /dev/shm ] && SHM=/dev/shm/dfz_$ID
 mkdir -p "$W"/{bin,out,find} "$SHM"
 trap 'rm -rf "$W" "$SHM"' EXIT
-trap 'pkill -u "$USER" -f "$W/"' TERM INT   # stop the fuzzers; the loop below then ends and the results are archived
+# Stopping: pkill reaches the fuzzers, the harnesses and the programs under them alike, so a harness can see one of
+# its two programs killed. The stop file tells it to store nothing from then on (DFZ_STOP_FILE, dfz.h).
+trap 'touch "$W/stop"; pkill -u "$USER" -f "$W/"' TERM INT   # the loop below then ends and the results are archived
 A=$T/bin/${CFG_A_NAME}_fuzz; B=$T/bin/${CFG_B_NAME}_fuzz; H=$T/bin/harness_$ENGINE_HARNESS
 cp "$A" "$B" "$H" "$W/bin/"; cp -r "$T/seeds/$SURFACE" "$W/seeds"; cp -r "$T/data" "$W/data"
 for try in 1 2 3 4 5; do cp "$DFZ_CFG" "$W/harness.cfg" && break; sleep 2; done   # the configuration this run uses
@@ -30,7 +32,7 @@ export DFZ_CFG=$W/harness.cfg; cp "$W/harness.cfg" "$RUN/harness.cfg"
 AMAP=$(AFL_DUMP_MAP_SIZE=1 "$A"); BMAP=$(AFL_DUMP_MAP_SIZE=1 "$B"); AMAP=$(( (AMAP + 63) / 64 * 64 )); BMAP=$(( (BMAP + 63) / 64 * 64 ))
 export DFZ_GUARDS=$(cat "$T/bin/guards" 2>/dev/null || echo 524288)
 export DFZ_SURFACE=$SURFACE DFZ_A=$W/bin/$(basename "$A") DFZ_B=$W/bin/$(basename "$B") DFZ_A_MAP=$AMAP DFZ_B_MAP=$BMAP
-export DFZ_WORK=$SHM DFZ_FIND=$W/find DFZ_DATA=$W/data
+export DFZ_WORK=$SHM DFZ_FIND=$W/find DFZ_DATA=$W/data DFZ_STOP_FILE=$W/stop
 T0=$(date +%s)
 printf 'engine=%s\nsurface=%s\ntag=%s\ndur=%s\nhost=%s\ncpus=%s\nstart=%s\na_map=%s\nb_map=%s\nguards=%s\nseeds=%s\n' \
   "$ENGINE" "$SURFACE" "$TAG" "$DUR" "$(hostname -s)" "$N" "$T0" "$AMAP" "$BMAP" "$DFZ_GUARDS" "$(ls "$W/seeds" | wc -l)" | tee "$RUN/meta.txt"
@@ -53,7 +55,7 @@ while true; do
   # a fuzzer may overrun its time limit by a long stage on one input (afl-fuzz finishes its current queue entry)
   [ $(( $(date +%s) - T0 )) -gt $((DUR + ${GRACE:-90})) ] && break
 done
-pkill -u "$USER" -f "$W/" 2>/dev/null; wait
+touch "$W/stop"; pkill -u "$USER" -f "$W/" 2>/dev/null; wait
 collect
 tail -3 "$W/out/log_0.txt" | cut -c1-300
 ( cd "$W/out" && tar czf "$RUN/corpus.tgz" $(engine_corpus "$W/out" | sed "s#^$W/out/##") $(ls log_*.txt */*/fuzzer_stats */*/plot_data 2>/dev/null) 2>/dev/null )

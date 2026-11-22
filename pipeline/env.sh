@@ -7,7 +7,9 @@ DFZ_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 export DFZ_ROOT DFZ_WORK=${DFZ_WORK:-$DFZ_ROOT/work}
 export DFZ_TOOLS=${DFZ_TOOLS:-$DFZ_WORK/tools}
 export AFL_ROOT=${AFL_ROOT:-$DFZ_TOOLS/AFLplusplus} HFUZZ_ROOT=${HFUZZ_ROOT:-$DFZ_TOOLS/honggfuzz}
-export NPROC=${NPROC:-${SLURM_CPUS_PER_TASK:-$(nproc)}}
+# CPUs of this process. Inside a Slurm job its allocation counts, whatever was inherited: sbatch passes the
+# submitting shell's environment on, and a value from the login node would start that many workers on fewer CPUs.
+export NPROC=${SLURM_CPUS_PER_TASK:-${NPROC:-$(nproc)}}
 # How much may run at once. DFZ_CPU_BUDGET: CPUs in total; DFZ_JOB_CPUS: CPUs of one Slurm job (the largest job the
 # cluster accepts). The steps split their work into as many jobs as the budget allows (dfz_shards below). Without
 # Slurm, or without a budget, everything runs here on NPROC CPUs.

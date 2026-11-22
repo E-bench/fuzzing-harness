@@ -1,0 +1,10 @@
+2026-11-22T04:44:10,[Starting ExpansionHunter v5.0.0]
+2026-11-22T04:44:10,[Analyzing sample reads]
+2026-11-22T04:44:10,[Initializing reference /tmp/dfz_one_75756/75756/case/in/ref.fa]
+[W::bam_hdr_read] EOF marker is absent. The input is probably truncated
+2026-11-22T04:44:10,[Loading variant catalog from disk /tmp/dfz_one_75756/75756/case/in/catalog.json]
+2026-11-22T04:44:10,[Running sample analysis in streaming mode]
+2026-11-22T04:44:10,[Initializing all loci]
+2026-11-22T04:44:10,[Exception caught in thread 1  while initializing locus: L1 : Region L1 must not have more than one rare repeat]
+terminate called after throwing an instance of 'std::logic_error'
+  what():  Region L1 must not have more than one rare repeat

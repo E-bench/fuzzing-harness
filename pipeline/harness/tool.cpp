@@ -66,7 +66,7 @@ int main(int argc, char **argv) {
             printf("%s:", (s ? C.nameB : C.nameA).c_str());
             for (auto &a : commandLine(c, s)) printf(" %s", a.c_str());
             const Run &r = s ? o.b : o.a;
-            printf("\n  -> %s (exit %d, %ld ms) %s\n", r.cls.c_str(), r.code, r.ms, r.msg.c_str());
+            printf("\n  -> %s (exit %d, %ld ms, %ld MB, %ld ms of CPU) %s\n", r.cls.c_str(), r.code, r.ms, r.peakMb, r.cpuMs, r.msg.c_str());
         }
         if (o.findings.empty()) printf("no difference\n");
         for (const Finding &f : o.findings) printf("FINDING %s\n%s", signature(c, f).c_str(), f.detail.c_str());
@@ -76,6 +76,7 @@ int main(int argc, char **argv) {
         vector<string> in;
         for (int i = 2; i < argc; i++) listInputs(argv[i], in);
         size_t invalid = 0, differ = 0;
+        long peak[2] = {0, 0}, slow[2] = {0, 0};
         map<string, size_t> cls;
         for (auto &p : in) {
             string d;
@@ -85,8 +86,10 @@ int main(int argc, char **argv) {
             if (!runInput((const uint8_t *)d.data(), d.size(), c, o)) { invalid++; continue; }
             differ += !o.findings.empty();
             cls[C.nameA + "=" + o.a.cls + "," + C.nameB + "=" + o.b.cls]++;
+            peak[0] = std::max(peak[0], o.a.peakMb), peak[1] = std::max(peak[1], o.b.peakMb);
+            slow[0] = std::max(slow[0], o.a.ms), slow[1] = std::max(slow[1], o.b.ms);
         }
-        printf("inputs=%zu invalid=%zu with_difference=%zu", in.size(), invalid, differ);
+        printf("inputs=%zu invalid=%zu with_difference=%zu peak_mb=%ld,%ld longest_ms=%ld,%ld", in.size(), invalid, differ, peak[0], peak[1], slow[0], slow[1]);
         for (auto &k : cls) printf(" %s:%zu", k.first.c_str(), k.second);
         printf("\n");
     } else if (cmd == "decode" && argc >= 4) {

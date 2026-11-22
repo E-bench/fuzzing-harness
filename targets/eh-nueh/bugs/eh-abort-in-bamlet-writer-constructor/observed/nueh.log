@@ -1,0 +1,5 @@
+2026-11-22T03:20:47,[Starting NuExpansionHunter v1.0.0 (based on ExpansionHunter v5.0.0)]
+2026-11-22T03:20:47,[Analyzing sample reads]
+2026-11-22T03:20:47,[Initializing reference /tmp/dfz_one_1764566/1764566/case/in/ref.fa]
+2026-11-22T03:20:47,[Loading variant catalog from disk /tmp/dfz_one_1764566/1764566/case/in/catalog.json]
+2026-11-22T03:20:47,[Invalid region string: chr1:-1-0]

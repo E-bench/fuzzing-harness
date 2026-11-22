@@ -98,7 +98,8 @@ inline string record(const Rec &r) {
     return out + b;
 }
 // One BGZF block from up to 65280 bytes of data. level 0 = stored.
-inline string bgzfBlock(const char *data, size_t n, int level) {
+// os: the header's operating-system byte (255 in every BGZF writer; readers must not depend on it).
+inline string bgzfBlock(const char *data, size_t n, int level, int os = 255) {
     vector<unsigned char> comp(n + n / 100 + 64);
     z_stream zs;
     memset(&zs, 0, sizeof zs);
@@ -111,6 +112,7 @@ inline string bgzfBlock(const char *data, size_t n, int level) {
     size_t clen = zs.total_out;
     deflateEnd(&zs);
     string s("\x1f\x8b\x08\x04\0\0\0\0\0\xff\x06\0BC\x02\0", 16);
+    s[9] = (char)os;
     put16(s, clen + 25);
     s.append((char *)comp.data(), clen);
     put32(s, crc32(crc32(0, nullptr, 0), (const Bytef *)data, n));
@@ -130,12 +132,35 @@ inline string bgzf(const string &data, size_t blockSize, int level, bool eof, ve
     if (eof) out += bgzfBlock("", 0, 6);
     return out;
 }
-// ---- BAI index of a BAM written by bgzf() with a uniform block size
+// The same with blocks that start at chosen offsets of the data (`cuts`, ascending), as htslib's own writer starts
+// blocks at record boundaries; a piece longer than 65280 bytes is split. ustarts: the data offset of every block.
+inline string bgzfAt(const string &data, const vector<size_t> &cuts, int level, bool eof, int os, vector<size_t> &starts, vector<size_t> &ustarts) {
+    string out;
+    vector<size_t> at{0};
+    for (size_t c : cuts) if (c > at.back() && c < data.size()) at.push_back(c);
+    at.push_back(data.size());
+    for (size_t k = 0; k + 1 < at.size(); k++)
+        for (size_t i = at[k]; i < at[k + 1]; i += 65280) {
+            starts.push_back(out.size());
+            ustarts.push_back(i);
+            out += bgzfBlock(data.data() + i, std::min<size_t>(65280, at[k + 1] - i), level, os);
+        }
+    starts.push_back(out.size());
+    ustarts.push_back(data.size());
+    if (eof) out += bgzfBlock("", 0, 6);
+    return out;
+}
+// ---- BAI index of a BAM written by bgzf() with a uniform block size, or by bgzfAt() (ustarts given)
 struct Span { int ref, beg, end; size_t from, to; }; // reference interval and byte range in the uncompressed stream
 inline void put64(string &s, uint64_t v) { for (int i = 0; i < 8; i++) s.push_back((char)(v >> (8 * i))); }
-inline string bai(const vector<Span> &spans, size_t nref, size_t blockSize, const vector<size_t> &starts) {
+inline string bai(const vector<Span> &spans, size_t nref, size_t blockSize, const vector<size_t> &starts, const vector<size_t> *ustarts = nullptr) {
     blockSize = std::max<size_t>(1, std::min<size_t>(blockSize, 65280));
     auto voff = [&](size_t u) {
+        if (ustarts && !ustarts->empty()) {
+            size_t b = std::upper_bound(ustarts->begin(), ustarts->end(), u) - ustarts->begin();
+            b = b ? b - 1 : 0;
+            return (uint64_t)starts[b] << 16 | (u - (*ustarts)[b]);
+        }
         size_t b = u / blockSize;
         if (b >= starts.size()) b = starts.empty() ? 0 : starts.size() - 1;
         return (uint64_t)(starts.empty() ? 0 : starts[b]) << 16 | (u % blockSize);

@@ -13,6 +13,9 @@ if [ -z "${NCPU:-}" ]; then
   NCPU=$(( DFZ_CPU_BUDGET / njobs )); [ "$NCPU" -gt "$DFZ_JOB_CPUS" ] && NCPU=$DFZ_JOB_CPUS; [ "$NCPU" -lt 1 ] && NCPU=$DFZ_JOB_CPUS
 fi
 MEM=${MEM:-$(dfz_mem "$NCPU")}
+# every fuzzer instance can have one program at the memory limit at the same time
+[ "${CFG_MEMORY_MB:-0}" -gt 0 ] && [ $(( ${MEM%G} * 1024 )) -lt $(( NCPU * CFG_MEMORY_MB )) ] &&
+  echo "warning: jobs of $MEM for $NCPU fuzzer instances with a memory limit of $CFG_MEMORY_MB MB per program run: the machine may end processes when many inputs reach the limit at once" >&2
 echo "$njobs jobs x $NCPU CPUs = $(( njobs * NCPU )) CPUs (budget $DFZ_CPU_BUDGET), $MEM each"
 mkdir -p "$T/runs/$TAG/logs"
 LIMIT=$(( DUR / 60 + 30 ))

@@ -1,0 +1,13 @@
+--- a/ehunter/io/LocusSpecDecoding.cpp
++++ b/ehunter/io/LocusSpecDecoding.cpp
+@@ -311,7 +311,9 @@
+                 const GenomicRegion& referenceRegion = userDescription.referenceRegions.at(variantIndex);
+ 
+                 VariantTypeFromUser variantDescription = userDescription.variantTypesFromUser.at(variantIndex);
+-                const string& variantId = userDescription.variantIds[variantIndex];
++                // .at() like its neighbours: a catalog with fewer VariantId entries than variants is an error, not a
++                // read beyond the vector
++                const string& variantId = userDescription.variantIds.at(variantIndex);
+                 VariantType variantType = determineVariantType(feature.type);
+                 VariantSubtype variantSubtype
+                     = determineVariantSubtype(feature.type, variantDescription, referenceRegion);

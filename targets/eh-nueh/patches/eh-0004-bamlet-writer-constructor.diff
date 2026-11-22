@@ -1,0 +1,30 @@
+--- a/ehunter/io/BamletWriter.cpp
++++ b/ehunter/io/BamletWriter.cpp
+@@ -70,12 +70,23 @@
+     , contigInfo_(contigInfo)
+     , writeThread_(&BamletWriter::writeHtsAlignments, this)
+ {
+-    for (const auto& locusSpec : regionCatalog)
++    // The writer thread runs already. An exception from here on must end it before the members are destroyed:
++    // destroying a std::thread that was not joined ends the program (std::terminate).
++    try
+     {
+-        graphReferenceMappings_.emplace(locusSpec.locusId(), generateMapping(contigInfo, locusSpec));
+-    }
++        for (const auto& locusSpec : regionCatalog)
++        {
++            graphReferenceMappings_.emplace(locusSpec.locusId(), generateMapping(contigInfo, locusSpec));
++        }
+ 
+-    writeHeader();
++        writeHeader();
++    }
++    catch (...)
++    {
++        writeQueue_.push(nullptr);
++        writeThread_.join();
++        throw;
++    }
+ }
+ 
+ BamletWriter::~BamletWriter()

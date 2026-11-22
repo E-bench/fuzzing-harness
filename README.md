@@ -9,6 +9,9 @@ their outputs differ and how much of both programs the inputs reached.
 - **Any fuzzer.** A fuzzer is one file under [`pipeline/engines/`](pipeline/engines/). AFL++, AFL++ without feedback
   (black-box baseline), LibAFL, libFuzzer and honggfuzz are there. All drive the same harness and are compared on the
   same footing: differences found, time to find them, coverage of both programs.
+- **Not only outputs are compared.** A program can read out of bounds and still print the right answer. Both
+  programs are also built with AddressSanitizer, UndefinedBehaviorSanitizer and the C++ library's assertions, and
+  every input of a campaign is replayed on these builds.
 - **Coverage is reported.** Both programs are also built with source-based coverage; every corpus is replayed on them
   and the report lists functions, lines and branches reached, per program, directory, file, fuzzer and over time, and
   what was never reached.
@@ -52,8 +55,9 @@ pipeline/
   env.sh, cfg.py         common environment; target.toml -> shell variables and the harness's configuration
   harness/               dfz.h (runner, comparators, signatures, adapter interface), fuzz_entry.cpp, tool.cpp, covshim.c
   engines/               one file per fuzzer (engines/README.md: how to add one)
-  steps/                 tools.sh build.sh campaign.sh submit.sh stop.sh recheck.sh coverage.sh report.sh post.sh check.sh
-  tools/                 recheck.py coverage.py report.py check.py
+  steps/                 tools.sh build.sh campaign.sh submit.sh stop.sh recheck.sh coverage.sh sanitize.sh report.sh
+                         post.sh check.sh
+  tools/                 recheck.py coverage.py sanitize.py report.py check.py archives.py
 targets/<target>/        target.toml, build script, adapter.cpp, seeds (targets/README.md: the contract)
 docs/                    WORKFLOW.md (the two loops), GENERATORS.md (the generator, input constraints)
 work/                    everything generated (git-ignored): fuzzers, sources, builds, seeds, runs, rechecks, coverage, reports
@@ -63,14 +67,16 @@ work/                    everything generated (git-ignored): fuzzers, sources, b
 
 ```bash
 ./dfz tools                                   # fetch and build the fuzzers into work/tools
-./dfz build eh-nueh                           # fetch, deps, ref, refp, fuzz, cov, harness, data
+./dfz build eh-nueh                           # fetch, deps, ref, refp, fuzz, cov, san, harness, data
 ./dfz submit eh-nueh TAG=main DUR=3600        # Slurm: every fuzzer x every surface, sized to the CPU budget
-./dfz post eh-nueh TAG=main WAIT=1            # recheck of the differences, coverage, report, check (in parallel jobs)
+./dfz post eh-nueh TAG=main WAIT=1            # recheck of the differences, coverage, sanitizers, report, check
 ./dfz coverage eh-nueh TAG=seeds              # coverage of the seed corpora alone (minutes; the generator loop)
+./dfz sanitize eh-nueh TAG=main               # the same inputs on sanitizer builds: memory errors, undefined behaviour
 ./dfz recheck eh-nueh TAG=main                # what still differs under the current constraints, exemptions, patches
 ./dfz stop eh-nueh TAG=main                   # end a campaign early, keeping its results
 ./dfz fuzz eh-nueh ENGINE=afl SURFACE=locus TAG=local DUR=600   # one fuzzer on this machine
 ./dfz replay eh-nueh SURFACE=locus work/eh-nueh/recheck/main/inputs/<name>.bin   # one input: what differs
+./dfz run eh-nueh SURFACE=locus work/eh-nueh/seeds/locus   # many inputs: exit classes, largest memory, longest time
 ```
 
 Results of a campaign `<tag>` of target `<t>`, all under `work/<t>/`:
@@ -79,7 +85,8 @@ Results of a campaign `<tag>` of target `<t>`, all under `work/<t>/`:
 |---|---|
 | `runs/<tag>/<engine>.<surface>.<id>/` | `meta.txt`, `stats.tsv` (progress), `find.tgz` (stored inputs), `corpus.tgz` |
 | `recheck/<tag>/remaining.tsv`, `inputs/` | the stored inputs on which the programs still differ on the reference builds, with their signatures and which fuzzer stored them when |
-| `recheck/<tag>/summary.json` | the counts: stored, still differing (on the reference builds, only on the instrumented builds; to account for, exempt), flaky, gone |
+| `recheck/<tag>/summary.json` | the counts: stored, still differing (on the reference builds, only on the instrumented builds; to account for), flaky, time and memory limits passed (by side; the original's are put off), gone |
+| `sanitize/<tag>/findings.tsv`, `reports/`, `inputs/` | memory errors and undefined behaviour either program shows on the campaign's inputs: kind, place in the source, the sanitizer's report, an input |
 | `coverage/<tag>/COVERAGE.md` | the coverage report (all code and reachable code); next to it per-file tables, never-entered functions, one-sided conditions, annotated HTML |
 | `report/<tag>/REPORT.md` | the campaign report |
 
@@ -92,10 +99,10 @@ account, CPU budget, CPUs per job, memory per CPU) go into `env.local.sh`, the r
 
 Set per target in `target.toml`; the defaults:
 
-- Exit states are compared by class: success, error exit, signal, timeout. Exit codes are not compared unless
+- Exit states are compared by class: success, error exit, signal, and the two limits of the harness (time, memory). Exit codes are not compared unless
   `exit = "code"`. A failed run's error message goes into the signature with numbers, quoted text and paths masked.
 - Output files are compared only when both programs succeed. Each file has a comparator: `bytes`, `lines`, `tsv`
   (names the differing column), `json` (names the differing key). The adapter can rewrite a file before comparison
   (a binary format to canonical text).
-- Differences a rewrite documents as intended are listed as `[[exempt]]` rules; matching cases are marked, not
-  dropped.
+- A difference that a rewrite documents as intended is removed by the target's adapter, in code (`dfz_compare`),
+  under a condition on both the input and the exact outcome; everything else on that input is still compared.

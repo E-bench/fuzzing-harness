@@ -1,0 +1,14 @@
+surface: locus
+tags: block4096 cache ext0 male nobamlet noeof path-aligner stored threads6
+note: 2 loci: L0@1:1300-1564{R:CAG:ref10:10/12 L R:CCCCGCCCCGCG:ref6:6/8 L R:CCCCGCCCCGCG:ref6:6/8 L R:CCCCGCCCCGCG:ref6:6/8 } L1@2:1300-1348{R:CAG:ref10:10/10 L R:AT:ref6:6/6 }; 5879 records, read length 250, fragment 160
+eh: sig6 Region_L#_must_not_have_more_than_one_rare_repeat
+nueh: err [Region_L#_must_not_have_more_than_one_rare_repeat]
+FINDING locus [block4096 cache ext0 male nobamlet noeof path-aligner stored threads6] exit:eh=sig6,nueh=err msg_eh:Region_L#_must_not_have_more_than_one_rare_repeat msg_nueh:[Region_L#_must_not_have_more_than_one_rare_repeat]
+eh: sig6
+    2026-11-22T04:44:10,[Exception caught in thread 1  while initializing locus: L1 : Region L1 must not have more than one rare repeat]
+    terminate called after throwing an instance of 'std::logic_error'
+      what():  Region L1 must not have more than one rare repeat
+nueh: err (exit 1)
+    [W::bam_hdr_read] EOF marker is absent. The input is probably truncated
+    2026-11-22T04:44:14,[Analyzing read evidence]
+    2026-11-22T04:44:14,[Region L1 must not have more than one rare repeat]

@@ -1,0 +1,5 @@
+surface: locus
+tags: threads4
+note: 1 loci: L0@chr1:1300-1330{R:CAG:ref10:10/12 }; 166 records, read length 150, fragment 350
+eh: ok 
+nueh: ok 

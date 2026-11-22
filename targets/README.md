@@ -12,9 +12,10 @@ rewrite. The pipeline reads three things from it.
 | | `patches = ["patches/<file>.diff", ...]` | temporary patches of this side that hide known bugs (`docs/WORKFLOW.md`); applied to the `fuzz`, `cov` and `refp` builds, never to `ref` |
 | `[build]` | `deps`, `program`, `data` | shell commands (below) |
 | | `adapter`, `harness_libs` | the adapter source (default `adapter.cpp`) and extra link flags for the harness |
+| | `san_flags` | extra compiler flags of the sanitizer builds, to leave a check out (`-fno-sanitize=alignment`); the reason belongs into the target's README |
 | | `ref = { cc, cxx }` | the compiler of the reference builds |
 | `[run]` | `argv`, `argv_a`, `argv_b` | the command line: common part, then per side |
-| | `timeout_ms`, `memory_mb`, `env` | time limit per program run; address-space limit (default 0 = none; it counts thread stacks and allocator reserves, so multi-threaded programs fail to start threads under a tight one); extra environment |
+| | `timeout_ms`, `memory_mb`, `env` | time limit per program run; limit of its resident memory (default 0 = none). The harness ends a run that passes one, and the run's exit class is `timeout` or `memory`. Set both: without a memory limit an input that makes a program allocate without bound meets the machine's out-of-memory killer, which ends any process of the job; extra environment |
 | | `exit` | `"class"` (default) or `"code"` |
 | | `error_line`, `error_strip`, `error_prefix` | which line of a failed run's output goes into the signature, and what to cut from it |
 | | `compare_on_error` | compare output files also when both programs exit with an error (default: no) |
@@ -24,7 +25,6 @@ rewrite. The pipeline reads three things from it.
 | `[coverage]` | `ignore` | regular expression of source files that are not the programs under test |
 | `[[coverage.out_of_scope]]` | `match`, `function`, `reason` | program code the configured command line cannot reach, with the reason: whole files (`match`, a regular expression on the path) or single functions (`function`, a regular expression on the demangled name, optionally restricted by `match`). Reported separately; a listed function that does get executed is reported as a warning and stays in the totals |
 | | `unreachable` | a file in the target directory that lists single branch outcomes the configured command line cannot produce (side, file, line, column, `true`/`false`/`both`, reason); they leave the branch totals of reachable code, and a listed outcome that is executed is reported |
-| `[[exempt]]` | `match`, `reason` | signatures of differences the rewrite documents as intended |
 
 Placeholders in `[build]` commands: `{target}` (this directory), `{side}`, `{src}` (the checkout), `{deps}`, `{build}`
 and `{out}` (build directory and output binary of one flavour), `{bin}`, `{data}`, `{seeds}`, `{jobs}`.
@@ -46,9 +46,10 @@ What a run mode is (for example which analysis mode of a program is tested) is d
   | `ref` | `[build] ref` | rechecking differences; the builds that witnesses refer to |
   | `refp` | as `ref`, with the side's patches (`DFZ_PATCHES`) | rechecking what still differs with the known bugs patched away |
   | `fuzz` | AFL++'s `afl-clang-fast(++)` | edge coverage for the fuzzers' feedback |
-  | `cov` | clang with `-fprofile-instr-generate -fcoverage-mapping`, plus `covshim.o` at link time | the coverage report |
+  | `cov` | clang with `-fprofile-instr-generate -fcoverage-mapping -fprofile-update=atomic`, plus `covshim.o` at link time | the coverage report |
+  | `san` | clang with `-fsanitize=address,undefined -g` and `-D_GLIBCXX_ASSERTIONS` | stopping at memory errors and undefined behaviour that leave the output unchanged (`./dfz sanitize`) |
 
-  A program in another language needs the same three: the equivalent of AFL++'s runtime with a trace-pc-guard pass
+  A program in another language needs the equivalents (a memory-safe language has no use for `san`): the equivalent of AFL++'s runtime with a trace-pc-guard pass
   for `fuzz` (Rust: `-C passes=sancov-module ... -C link-arg=afl-compiler-rt.o`), LLVM source-based coverage for `cov`.
 - `data` writes the seed corpora `{seeds}/<surface>/` and whatever fixed data the adapter wants under `{data}`.
 
@@ -61,7 +62,8 @@ Includes [`dfz.h`](../pipeline/harness/dfz.h) and defines up to three functions:
 bool dfz_decode(const uint8_t *data, size_t size, dfz::Case &c);
 // optional: rewrite an output file before it is compared (binary format -> canonical text); false = unchanged
 bool dfz_normalize(const dfz::Case &c, const std::string &file, int side, std::string &content);
-// optional: add target-specific findings after the configured comparison
+// optional: runs after the configured comparison; may add findings, and remove one that is an intended difference
+// of the rewrite (an exemption: see below)
 void dfz_compare(const dfz::Case &c, const dfz::Run &a, const dfz::Run &b, std::vector<dfz::Finding> &out);
 ```
 
@@ -74,8 +76,15 @@ Conventions that make the generic steps work well:
 
 - **Zero means default.** An all-zero field selects the ordinary case, so that what is non-zero in an input is
   what is special about it.
-- **Tags name causes, not data.** Tag a case with its non-default options and with input properties that an exemption
-  refers to.
+- **Tags name causes, not data.** Tag a case with its non-default options and with the input properties that
+  explain a difference.
+- **Exemptions are code, and exact.** A difference that the rewrite documents as intended is removed in
+  `dfz_compare`, by a condition that names both the property of the input (the adapter knows what it generated) and
+  the outcome that is expected: "the option only the rewrite has is invalid, the original succeeded, the rewrite
+  ended with an error". Anything else that differs on the same input still counts. Do not exempt by a property of
+  the input alone: that excuses every difference on such inputs, whatever its cause. Where the intended difference
+  is one of form (order, compression, a field's spelling), use `dfz_normalize` instead, which leaves the rest of
+  the file compared.
 - **Raw and structured surfaces.** A raw surface hands the fuzz bytes to the programs as one input file (parsers); a
   structured surface decodes them into a consistent set of files (the logic behind the parsers). Seeds of the raw
   surfaces can be produced from the structured one with `dfz_tool decode`.
@@ -94,7 +103,7 @@ Written while the target is worked on ([`docs/WORKFLOW.md`](../docs/WORKFLOW.md)
 | `patches/` | the temporary patches that hide those bugs in the fuzzed builds (`[side.<x>] patches`) |
 | `constraints/<name>/` | one implicit input constraint whose violation made the programs differ: evidence, witness, control |
 | the unreachable list and its evidence | what the configured command line cannot reach (`[coverage] unreachable`) |
-| `README.md` | what is run and compared, the surfaces, and the sections "Bugs found", "Input constraints", "Valid inputs the generator does not produce", "Exemptions" |
+| `README.md` | what is run and compared, the surfaces, and the sections "Bugs found", "Input constraints", "Valid inputs the generator does not produce", "Exemptions" (what `dfz_compare` removes, and why) |
 
 ## Adding a target
 

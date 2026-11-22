@@ -1,0 +1,24 @@
+eh  abort  ehunter/io/LocusSpecDecoding.cpp:314 in ehunter::decodeLocusSpecification
+surface catalog, input inputs/aeef67f86295.bin
+
+==2373640==ERROR: AddressSanitizer: ABRT on unknown address 0x8636c0500243808 (pc 0x7f212e18306c bp 0x000000243808 sp 0x7ffeccd2a720 T0)
+    #0 0x7f212e18306c in __pthread_kill_implementation (/lib64/libc.so.6+0x8d06c) (BuildId: ee05e7d5c6584848622af23de57c297fd3081b70)
+    #1 0x7f212e135b85 in gsignal (/lib64/libc.so.6+0x3fb85) (BuildId: ee05e7d5c6584848622af23de57c297fd3081b70)
+    #2 0x7f212e11f872 in abort (/lib64/libc.so.6+0x29872) (BuildId: ee05e7d5c6584848622af23de57c297fd3081b70)
+    #3 0x00000052e71e in std::__replacement_assert(char const*, int, char const*, char const*) /usr/lib/gcc/x86_64-redhat-linux/11/../../../../include/c++/11/x86_64-redhat-linux/bits/c++config.h:2675:5
+    #4 0x0000005e479f in std::vector<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>, std::allocator<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>>>>::operator[](unsigned long) const /usr/lib/gcc/x86_64-redhat-linux/11/../../../../include/c++/11/bits/stl_vector.h:1063:2
+    #5 0x0000005e187b in ehunter::decodeLocusSpecification(ehunter::LocusDescriptionFromUser const&, ehunter::Reference const&, ehunter::HeuristicParameters const&) ehunter/io/LocusSpecDecoding.cpp:314:43
+    #6 0x00000058faee in ehunter::loadLocusCatalogFromDisk(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>> const&, ehunter::HeuristicParameters const&, ehunter::Reference const&) ehunter/io/CatalogLoading.cpp:224:40
+    #7 0x00000052a6b2 in main ehunter/app/ExpansionHunter.cpp:118:45
+    #8 0x7f212e12060f in __libc_start_call_main (/lib64/libc.so.6+0x2a60f) (BuildId: ee05e7d5c6584848622af23de57c297fd3081b70)
+    #9 0x7f212e1206bf in __libc_start_main@GLIBC_2.2.5 (/lib64/libc.so.6+0x2a6bf) (BuildId: ee05e7d5c6584848622af23de57c297fd3081b70)
+    #10 0x000000441914 in _start (eh+0x441914)
+
+==2373640==Register values:
+rax = 0x0000000000000000  rbx = 0x00007f212d68c7c0  rcx = 0x00007f212e18306c  rdx = 0x0000000000000006  
+rdi = 0x0000000000243808  rsi = 0x0000000000243808  rbp = 0x0000000000243808  rsp = 0x00007ffeccd2a720  
+ r8 = 0x00007ffeccd2a7f0   r9 = 0x00007fffffffff01  r10 = 0x0000000000000008  r11 = 0x0000000000000246  
+r12 = 0x0000000000000006  r13 = 0x00007b212bee0e20  r14 = 0x0000000000000001  r15 = 0x00007b212bee0000  
+AddressSanitizer can not provide additional info.
+SUMMARY: AddressSanitizer: ABRT (/lib64/libc.so.6+0x8d06c) (BuildId: ee05e7d5c6584848622af23de57c297fd3081b70) in __pthread_kill_implementation
+==2373640==ABORTING

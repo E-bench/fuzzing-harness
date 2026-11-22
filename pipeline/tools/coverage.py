@@ -33,7 +33,7 @@ Outputs in coverage/<tag>/:
   branches.<side>.tsv      conditions with an outcome never taken (file, line, column, true count, false count)
   html/<side>/             llvm-cov's annotated source (line counts and branch counts)
 """
-import argparse, collections, json, os, re, shutil, subprocess, sys, tarfile, tomllib
+import argparse, collections, json, os, re, shutil, subprocess, sys, tomllib
 from concurrent.futures import ThreadPoolExecutor
 
 ap = argparse.ArgumentParser()
@@ -49,7 +49,16 @@ ap.add_argument("--shard", default="0/1")
 a = ap.parse_args()
 SHARD, NSHARD = (int(x) for x in a.shard.split("/"))
 import hashlib
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import archives
 cfg = tomllib.load(open(a.toml, "rb"))
+# As many replays at once as the job's memory allows when each of them reaches the memory limit of a program run:
+# otherwise the machine ends processes of the job, and their results look like behaviour of the programs.
+REPLAYS = a.jobs
+_limit, _job = 1 * int(cfg["run"].get("memory_mb", 0)), int(os.environ.get("SLURM_MEM_PER_NODE") or 0)
+if _limit and _job and _job // _limit < a.jobs:
+    REPLAYS = max(1, _job // _limit)
+    print(f"{REPLAYS} replays at once instead of {a.jobs}: the job has {_job} MB and a program run may use {_limit} MB", flush=True)
 SIDES = [cfg["side"]["a"]["name"], cfg["side"]["b"]["name"]]
 TITLE = {cfg["side"][s]["name"]: cfg["side"][s].get("title", cfg["side"][s]["name"]) for s in ("a", "b")}
 ccfg = cfg.get("coverage", {})
@@ -126,56 +135,59 @@ def replay_phase():
         files = sorted(os.path.join(seeds_dir, surface, f) for f in os.listdir(os.path.join(seeds_dir, surface)))
         seed_hash[surface] = {sha(f) for f in files}
         runs.append({"name": f"seeds.{surface}", "engine": "seeds", "surface": surface, "slices": [files], "dur": 0, "cpus": 0, "dropped": 0})
+    archived = []
     for run in sorted(os.listdir(runs_dir)) if os.path.isdir(runs_dir) else []:
         tgz = os.path.join(runs_dir, run, "corpus.tgz")
         meta = os.path.join(runs_dir, run, "meta.txt")
         if not os.path.isfile(tgz) or not os.path.isfile(meta):
             continue
-        m = dict(l.strip().split("=", 1) for l in open(meta) if "=" in l)
-        dest = os.path.join(scratch, "corpus", run)
-        with tarfile.open(tgz) as t:
-            t.extractall(dest, filter="data")
-        files = []
-        for root, _, names in os.walk(dest):
-            if os.path.basename(root).startswith("."):
-                continue
-            for n in names:
-                p = os.path.join(root, n)
-                if n.startswith("log_") or n in ("fuzzer_stats", "plot_data") or "/.state" in p or n.startswith(".") or n.endswith(".csv"):
-                    continue
-                files.append((os.path.getmtime(p) - int(m["start"]), os.path.relpath(p, dest), p))
-        files.sort()
+        archived.append((run, tgz, dict(l.strip().split("=", 1) for l in open(meta) if "=" in l)))
+    # the archives are read through, not unpacked: an input is (archive, member name) until this shard's part is known
+    with ThreadPoolExecutor(a.jobs) as ex:
+        listings = list(ex.map(lambda x: archives.listing(x[1]), archived))
+    for (run, tgz, m), listed in zip(archived, listings):
+        files = sorted((mtime - int(m["start"]), os.path.normpath(name), name, h) for name, mtime, h in listed)
         dur = int(m["dur"])
         bounds = [dur * 2 ** -(a.slices - 1 - k) for k in range(a.slices)]
         bounds[-1] = float("inf")
         sl = [[] for _ in bounds]
         seen = set(seed_hash.get(m["surface"], ()))
         dropped = 0
-        for t, _, p in files:
-            h = sha(p)
+        for t, _, name, h in files:
             if h in seen:
                 dropped += 1
                 continue
             seen.add(h)
-            sl[next(k for k, b in enumerate(bounds) if t <= b)].append(p)
+            sl[next(k for k, b in enumerate(bounds) if t <= b)].append((tgz, name))
         runs.append({"name": run, "engine": m["engine"], "surface": m["surface"], "slices": sl, "dur": dur, "cpus": int(m.get("cpus", 0)), "dropped": dropped})
     print(f"runs: {len(runs)}, inputs: {sum(len(s) for r in runs for s in r['slices'])} (+ {sum(r['dropped'] for r in runs)} duplicates dropped)", flush=True)
+    # chunks small enough that every CPU of every shard has work: a few slow inputs must not sit in one chunk
+    chunk = max(1, min(a.chunk, sum(len(s) for r in runs for s in r["slices"]) // (4 * NSHARD * REPLAYS) + 1))
     tasks = []
     for r in runs:
         for k, files in enumerate(r["slices"]):
             if a.max_inputs and len(files) > a.max_inputs:
                 step = len(files) / a.max_inputs
                 files = [files[int(i * step)] for i in range(a.max_inputs)]
-            for i in range(0, len(files), a.chunk):
-                tasks.append((r, k, files[i:i + a.chunk], len(tasks)))
+            for i in range(0, len(files), chunk):
+                tasks.append((r, k, files[i:i + chunk], len(tasks)))
     tasks = [x for x in tasks if x[3] % NSHARD == SHARD]
+    # written to the scratch directory: only what this shard replays
+    need = collections.defaultdict(set)
+    for _, _, files, _ in tasks:
+        for f in files:
+            if not isinstance(f, str):
+                need[f[0]].add(f[1])
+    unpacked = lambda tgz: os.path.join(scratch, "corpus", os.path.basename(os.path.dirname(tgz)))
+    with ThreadPoolExecutor(a.jobs) as ex:
+        list(ex.map(lambda tgz: archives.unpack(tgz, unpacked(tgz), need[tgz]), sorted(need)))
 
     def replay(task):
         r, k, files, tid = task
         d = os.path.join(scratch, "in", str(tid))
         os.makedirs(d)
         for i, f in enumerate(files):
-            os.symlink(f, os.path.join(d, f"{i:06d}"))
+            os.symlink(f if isinstance(f, str) else archives.path(unpacked(f[0]), f[1]), os.path.join(d, f"{i:06d}"))
         prof = os.path.join(scratch, "prof", f"{r['name']}__{k}")
         env = dict(os.environ, DFZ_A=BIN[SIDES[0]], DFZ_B=BIN[SIDES[1]], DFZ_DATA=os.path.join(local, "data"),
                    DFZ_CFG=os.path.join(local, "harness.cfg"), DFZ_SURFACE=r["surface"], DFZ_WORK=os.path.join(shm, str(tid)),
@@ -184,11 +196,17 @@ def replay_phase():
             env.pop(v, None)
         return sh([tool, "run", d], env=env).stdout.strip()
 
-    n = 0
-    with ThreadPoolExecutor(a.jobs) as ex:
+    n, ended = 0, collections.Counter()
+    with ThreadPoolExecutor(REPLAYS) as ex:
         for res in ex.map(replay, tasks):
             m = re.search(r"inputs=(\d+)", res)
             n += int(m.group(1)) if m else 0
+            # a run the harness ended at a limit leaves no profile: its input adds nothing to the coverage of that program
+            for classes, k in re.findall(r" (\S+=\S+,\S+=\S+):(\d+)", res):
+                for side_cls in classes.split(","):
+                    side, cls = side_cls.split("=", 1)
+                    if cls in ("timeout", "memory"):
+                        ended[f"{side} {cls}"] += int(k)
     shutil.rmtree(shm, ignore_errors=True)
     print(f"shard {SHARD}/{NSHARD}: replayed {n} inputs", flush=True)
     # this shard's profiles: one per run, slice and side
@@ -200,6 +218,8 @@ def replay_phase():
     with ThreadPoolExecutor(a.jobs) as ex:
         list(ex.map(lambda x: merge(*x), todo))
     json.dump([{**r, "slices": [len(s) for s in r["slices"]]} for r in runs], open(os.path.join(shard_dir, "runs.json"), "w"))
+    json.dump({"replayed": n, "ended": ended}, open(os.path.join(shard_dir, "replay.json"), "w"))
+    open(os.path.join(shard_dir, "of"), "w").write(str(NSHARD))
     shutil.rmtree(os.path.join(scratch, "prof"), ignore_errors=True)
     shutil.rmtree(os.path.join(scratch, "corpus"), ignore_errors=True)
     shutil.rmtree(os.path.join(scratch, "in"), ignore_errors=True)
@@ -210,9 +230,22 @@ if a.phase in ("all", "replay"):
 if a.phase == "replay":
     shutil.rmtree(scratch, ignore_errors=True)
     sys.exit(0)
-shards = sorted(d for d in os.listdir(os.path.join(out, ".shards")) if os.path.isfile(os.path.join(out, ".shards", d, "runs.json")))
+shards = sorted(d for d in os.listdir(os.path.join(out, ".shards")) if os.path.isfile(os.path.join(out, ".shards", d, "runs.json"))) if os.path.isdir(os.path.join(out, ".shards")) else []
 if not shards:
     sys.exit("no replay results under " + os.path.join(out, ".shards"))
+of = {open(os.path.join(out, ".shards", d, "of")).read().strip() if os.path.isfile(os.path.join(out, ".shards", d, "of")) else "?" for d in shards}
+if len(of) != 1 or sorted(shards, key=int) != [str(k) for k in range(int(next(iter(of)) if next(iter(of)).isdigit() else -1))]:
+    sys.exit(f"the shards under {out}/.shards are not the whole of one submission (shards {', '.join(shards)}, each one of {', '.join(sorted(of))}): "
+             "a job failed or two submissions ran at once; run the step again")
+for f in os.listdir(out):   # what an earlier run left is replaced as a whole, now that the new replay is there
+    if f != ".shards":
+        p = os.path.join(out, f)
+        shutil.rmtree(p) if os.path.isdir(p) else os.remove(p)
+replayed, ended = 0, collections.Counter()
+for d in shards:
+    rp = json.load(open(os.path.join(out, ".shards", d, "replay.json")))
+    replayed += rp["replayed"]
+    ended.update(rp["ended"])
 runs = json.load(open(os.path.join(out, ".shards", shards[0], "runs.json")))
 for r in runs:
     r["slices"] = [[None] * n for n in r["slices"]]   # the report needs the counts only
@@ -420,7 +453,14 @@ for side in SIDES:
             for b in x.get("branches", []):
                 key = (b[0], b[1])
                 t, fl = seen.get(key, (0, 0))
-                seen[key] = (t + b[4], fl + b[5])      # the same condition in several instantiations
+                bt, bf = b[4], b[5]
+                # A count that is derived (entries minus early exits) comes out negative, i.e. as a number near
+                # 2^64, when the counters it is derived from disagree. That is a defect of the measurement, not an
+                # execution: counted as zero, and reported.
+                if bt >= 1 << 62 or bf >= 1 << 62:
+                    warn.append(f"{sf}:{b[0]}:{b[1]}: impossible execution count ({bt}, {bf}); counted as not executed")
+                    bt, bf = (0 if bt >= 1 << 62 else bt), (0 if bf >= 1 << 62 else bf)
+                seen[key] = (t + bt, fl + bf)      # the same condition in several instantiations
             for (line, col), (t, fl) in sorted(seen.items()):
                 claim = claims.get((sf, line, col))
                 oos_ = file_oos or any(a_ <= line <= b_ for a_, b_ in ranges.get(sf, ()))
@@ -494,6 +534,9 @@ L += ["Both programs were rebuilt with clang's source-based coverage and every i
       "the seed corpora were replayed on them. A branch is one outcome (true or false) of one condition, as `llvm-cov`",
       "counts it; a condition that occurs in several template instantiations is counted once per instantiation.",
       "A run's coverage includes the seeds of its surface (every run starts from them).", ""]
+if ended:
+    L += [f"Of {replayed:,} replays, the harness ended " + ", ".join(f"{k.split()[0]} {v:,} times at the {k.split()[1]} limit" for k, v in sorted(ended.items()))
+          + " (the time limit is twice the configured one here). Such a run leaves no counts: what these inputs reach in that program is missing below.", ""]
 L += ["## Totals", "", "| Program | Scope | Functions | Lines | Regions | Branches |", "|---|---|---|---|---|---|"]
 for side in SIDES:
     t = result["total"].get(side)

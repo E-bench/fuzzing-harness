@@ -126,6 +126,19 @@ def locus_seeds():
     for x in range(1, 16):                # extra loci without reads: catalog sizes around the rewrite's batch limits
         s[f"extraloci{x:02d}"] = case(hdr={"NOISE": x << 4, "OPTIONS": (x % 4) << 2}, loci=[{"HAP2": 3}])
     s["threads16"] = case(hdr={"OPTIONS": 3 << 2, "RES": 0x40}, loci=[{"HAP2": 3}, {"TEMPLATE": 2}])
+    for k in range(1, 8):                 # other thread counts: 3 5 6 7 12, and 32 64 (above the CPUs of a job)
+        s[f"threads_more{k}"] = case(hdr={"UNMAPPED": k << 5}, loci=[{"HAP2": 3}, {"TEMPLATE": 2}])
+    # The size of a case is a choice of the input: deeper samples (x4, x16, x32) and a larger catalog (x2).
+    for sc in (1, 2, 3):
+        s[f"depth_scale{sc}"] = case(hdr={"DEPTH": sc << 4, "OPTIONS": 2 << 2}, loci=[{"HAP2": 3}])
+        s[f"depth_scale{sc}_stutter"] = case(hdr={"DEPTH": sc << 4, "OPTIONS": 1 << 2}, loci=[{"COVER": 2 << 5, "HAP1": 0x80 | 12, "HAP2": 0x80 | 16}])
+        s[f"depth_scale{sc}_shuffled"] = case(hdr={"DEPTH": sc << 4, "CONTAINER": 1 << 4, "OPTIONS": 3 << 2}, loci=[{"HAP2": 3}, {"TEMPLATE": 2}])
+    s["depth_scale3_deep"] = case(hdr={"DEPTH": (3 << 4) | 14, "OPTIONS": 3 << 2}, loci=[{"HAP2": 3}])   # more than 16,384 records
+    # loci without reads: twice 1,023 1,024 1,025 and 1,100
+    for cs, x in ((3, 7), (3, 8), (3, 12), (3, 9)):
+        for nl in (1, 4):
+            s[f"catalog_scale{cs}_{x:02d}_{nl}loci"] = case(hdr={"EXT": cs << 4, "NOISE": x << 4, "OPTIONS": (2 << 2) if nl == 4 else 0},
+                                                            loci=[{"HAP2": 3}] + [{"TEMPLATE": 2}] * (nl - 1))
     for cli in range(1, 16):              # command-line errors
         s[f"cli{cli:02d}"] = case(hdr={"RES": cli << 2}, loci=[{"HAP2": 3}])
     # ---- seeds for single branches named by the coverage analysis (docs/GENERATORS.md, the loop)
@@ -199,6 +212,55 @@ def locus_seeds():
     for jit in (1, 2, 3):                                     # stutter: many candidate sizes (the rewrite's genotype grid needs threads >= 2)
         s[f"stutter{jit}"] = case(hdr={"OPTIONS": 1 << 2, "DEPTH": 8}, loci=[{"COVER": jit << 5, "HAP1": 0x80 | 12, "HAP2": 0x80 | 16}])
         s[f"stutter{jit}_homopolymer"] = case(hdr={"OPTIONS": T4, "DEPTH": 8, "ERRORS": 0x18}, loci=[{"COVER": jit << 5, "MOTIF": 5, "HAP1": 0x80 | 10, "HAP2": 0x80 | 18}])
+    # the rewrite's parallel genotype grid: more than one thread and n(n+1)F >= 200,000 for n candidate sizes and F
+    # fragments at the repeat (TwoAlleleStrGenotyper.cpp); 60x with the widest stutter gives n about 60, F about 200
+    s["grid_homopolymer"] = case(hdr={"OPTIONS": 1 << 2}, loci=[{"MOTIF": 5, "HAP1": 0x80 | 14, "HAP2": 0x80 | 19, "COVER": (3 << 5) | 14}])
+    s["grid_homopolymer_threads8"] = case(hdr={"OPTIONS": 3 << 2}, loci=[{"MOTIF": 5, "HAP1": 0x80 | 14, "HAP2": 0x80 | 19, "COVER": (3 << 5) | 14}])
+    s["grid_cag"] = case(hdr={"OPTIONS": 1 << 2}, loci=[{"HAP1": 0x80 | 8, "HAP2": 0x80 | 11, "COVER": (3 << 5) | 14}])
+    s["grid_all_fragments_distinct"] = case(hdr={"OPTIONS": 1 << 2, "ERRORS": 4}, loci=[{"MOTIF": 5, "HAP1": 0x80 | 14, "HAP2": 0x80 | 19, "COVER": (3 << 5) | 14}])
+    s["grid_deep"] = case(hdr={"OPTIONS": 2 << 2, "DEPTH": 2 << 4}, loci=[{"COVER": 2 << 5, "HAP1": 0x80 | 12, "HAP2": 0x80 | 16}])
+    # The rewrite's indexed range reader: an index next to the reads, --threads >= 4 and at least 256 KiB of compressed
+    # file between the starts of two contigs; from 2 MiB on it also probes the file every 1 MiB for a record start.
+    s["ranges_stored"] = case(hdr={"RES": 1, "OPTIONS": 2 << 2, "CONTAINER": 3, "DEPTH": 2 << 4}, loci=[{"HAP2": 3}, {"TEMPLATE": 2}])
+    s["ranges_stored_probes"] = case(hdr={"RES": 1, "OPTIONS": 2 << 2, "CONTAINER": 3, "DEPTH": (3 << 4) | 2}, loci=[{"HAP2": 3}, {"TEMPLATE": 2}])
+    s["ranges_stale_index"] = case(hdr={"RES": 3, "OPTIONS": 2 << 2, "CONTAINER": 3, "DEPTH": (3 << 4) | 2}, loci=[{"HAP2": 3}, {"TEMPLATE": 2}])
+    s["ranges_many_records"] = case(hdr={"RES": 1, "OPTIONS": 3 << 2, "CONTAINER": 3, "DEPTH": (3 << 4) | 14}, loci=[{"HAP2": 3}])
+    s["ranges_compressed"] = case(hdr={"RES": 1, "OPTIONS": 3 << 2, "DEPTH": (3 << 4) | 14}, loci=[{"HAP2": 3}, {"TEMPLATE": 2}])
+    # blocks that start at a record, or a few bytes into one (where the rewrite's probes look for a record start)
+    for sh in range(1, 8):
+        s[f"record_blocks{sh}"] = case(hdr={"RES": 1, "OPTIONS": 2 << 2, "CONTAINER": 3, "DEPTH": (3 << 4) | 2, "NU2": sh << 4}, loci=[{"HAP2": 3}, {"TEMPLATE": 2}])
+    s["record_blocks_compressed"] = case(hdr={"RES": 1, "OPTIONS": 3 << 2, "DEPTH": (3 << 4) | 14, "NU2": 1 << 4}, loci=[{"HAP2": 3}])
+    s["record_blocks_small"] = case(hdr={"CONTAINER": 1 << 6, "NU2": 1 << 4}, loci=[{"HAP2": 3}], extras=[[7, 0, 60, 0, 0, 0, 5], [16, 0, 30, 0, 0x10, 0, 5], [4, 0, 40, 0, 0, 0, 5, 1]])
+    s["gzip_os_byte"] = case(hdr={"RES": 1, "OPTIONS": 2 << 2, "CONTAINER": 3, "DEPTH": (3 << 4) | 2, "NU2": 0x80}, loci=[{"HAP2": 3}, {"TEMPLATE": 2}])
+    # an index that does not fit the file: offsets inside records, one reference fewer, offsets beyond the end
+    for iv in (1, 2, 3):
+        s[f"index_unfit{iv}"] = case(hdr={"RES": 1, "OPTIONS": 2 << 2, "CONTAINER": 3, "DEPTH": 2 << 4, "EXT": iv << 6}, loci=[{"HAP2": 3}, {"TEMPLATE": 2}])
+    s["unmapped_mate_placed"] = case(loci=[{"HAP2": 3}], extras=[[16, 0, 60, 0, 0x10, 0, 5], [16, 0, 30, 0, 0x10, 0, 40]])
+    # pairs near very many loci: 480 noise pairs among 8,800 loci without reads
+    s["noise_many_loci"] = case(hdr={"NOISE": (9 << 4) | 15, "EXT": (2 << 4) | 6, "DEPTH": 0x40 | 7}, loci=[{"HAP2": 3}])
+    # more than 16,384 (pair, locus) items in one batch: four loci on one contig, close together, a wide extension
+    s["many_items_per_batch"] = case(hdr={"OPTIONS": 2 << 2, "LAYOUT": 0x3C, "EXT": 12, "DEPTH": 2 << 4}, loci=[{"HAP2": 3}] * 4)
+    # all first mates before their partners: more pending mates than the rewrite's 2,000,000-byte store
+    s["mates_apart"] = case(hdr={"READLEN": 0x40, "DEPTH": (3 << 4) | 14}, loci=[{"HAP2": 3}])
+    s["mates_apart_threads"] = case(hdr={"READLEN": 0x40, "DEPTH": (2 << 4) | 14, "OPTIONS": 2 << 2, "ERRORS": 0x18}, loci=[{"HAP2": 3}, {"TEMPLATE": 2}])
+    # two alignments of one read that share a node but no base of it (GreedyAlignmentIntersector): in-repeat reads on
+    # two adjacent repeats of one motif
+    s["intersect_adjacent_repeats"] = case(loci=[{"TEMPLATE": 253, "IRR": 0x24}])
+    s["intersect_repeats_literal"] = case(loci=[{"TEMPLATE": 252, "SMALL": 0x60, "IRR": 0x24}])
+    # flanks that are tandems of one unit, or the right flank a copy of the left one
+    for fl in (1, 2, 3):
+        s[f"flank_lowcomplexity{fl}"] = case(hdr={"READLEN": fl << 4}, loci=[{"HAP2": 3}])
+        s[f"flank_lowcomplexity{fl}_two_repeats"] = case(hdr={"READLEN": fl << 4, "OPTIONS": 2}, loci=[{"TEMPLATE": 2, "HAP2": 3}])
+        s[f"flank_lowcomplexity{fl}_errors"] = case(hdr={"READLEN": fl << 4, "ERRORS": 3 | 8, "OPTIONS": 1 << 2}, loci=[{"HAP2": 3}, {"TEMPLATE": 3}])
+    # a structure of many nodes: the first locus's template 4, 16 or 32 times (R x32: more than 64 graph nodes)
+    for sr in (1, 2, 3):
+        s[f"structure_x{sr}"] = case(hdr={"FRAG": sr << 4}, loci=[{"HAP2": 3}])
+        s[f"structure_x{sr}_threads"] = case(hdr={"FRAG": sr << 4, "OPTIONS": 2 << 2}, loci=[{"TEMPLATE": 2, "HAP2": 3}, {"HAP2": 3}])
+    s["structure_x1_path_aligner"] = case(hdr={"FRAG": 1 << 4, "OPTIONS": 2}, loci=[{"TEMPLATE": 2, "HAP2": 3}])   # x4, the most with this aligner
+    # a long read in the flank: an exact head, then a mismatch every 40 bases (a long piece for the extension aligner)
+    s["long_extension_piece"] = case(hdr={"EXT": 3}, loci=[{"PLACE": 0x28, "HAP2": 3}], extras=[[19, 0, 0, 12, 0x08, 0x07, 40, 0]])
+    # output that compresses poorly: random qualities on both mates, short reads, two loci on one contig
+    s["output_incompressible"] = case(hdr={"QUAL": 0x1B, "READLEN": 6, "DEPTH": 14, "LAYOUT": 0x3C}, loci=[{"HAP2": 3}, {"HAP2": 3}])
     s["stutter_single_thread"] = case(hdr={"DEPTH": 8}, loci=[{"COVER": 2 << 5, "HAP1": 0x80 | 12, "HAP2": 0x80 | 16}])
     for place, opt in ((2, 0), (1, 1)):                       # haploid: chrY, or chrX in a male
         nm = "Y" if place == 2 else "Xmale"

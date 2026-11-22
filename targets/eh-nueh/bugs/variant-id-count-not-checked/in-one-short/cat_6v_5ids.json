@@ -1,0 +1,29 @@
+[
+ {
+  "LocusId": "L0",
+  "LocusStructure": "(CAG)*CAACAG(AT)*CAACAG(GT)*CAACAG(CCG)*CAACAG(AAG)*CAACAG(TC)*",
+  "ReferenceRegion": [
+   "chr1:1500-1530",
+   "chr1:1536-1548",
+   "chr1:1554-1570",
+   "chr1:1576-1591",
+   "chr1:1597-1618",
+   "chr1:1624-1642"
+  ],
+  "VariantType": [
+   "Repeat",
+   "Repeat",
+   "Repeat",
+   "Repeat",
+   "Repeat",
+   "Repeat"
+  ],
+  "VariantId": [
+   "id0",
+   "id1",
+   "id2",
+   "id3",
+   "id4"
+  ]
+ }
+]

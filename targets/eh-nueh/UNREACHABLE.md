@@ -11,8 +11,9 @@ step checks them on every run in one direction: an outcome listed here that does
 warning in `COVERAGE.md` and counted as reachable. Entries marked *host* depend on the machine (CPU features, CPU
 count), not on the input.
 
-How far to trust it: of the 1,428 outcomes first listed, 137 (9.6%) have since been executed and removed: 47 when
-146 seeds for newly found input features were added, 90 more in a ten-minute campaign of five fuzzers. 1,291 remain.
+How far to trust it: of the 1,428 outcomes first listed, 145 (10.2%) have since been executed and removed: 47 when
+146 seeds for newly found input features were added, 90 in a ten-minute campaign of five fuzzers, 8 in a one-hour
+campaign with a larger generator. 1,283 remain.
 So the list still contains wrong entries, most likely among the "defensive check" and *host* reasons, and the
 "reachable" coverage figure is an upper estimate; the figure for all code, shown next to it, does not depend on the
 list.

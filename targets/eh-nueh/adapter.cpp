@@ -60,12 +60,26 @@ const int FRAGLEN[] = {350, 300, 400, 450, 250, 200, 500, 600, 160, 1000, 150, 1
 const int COVER[] = {20, 15, 30, 10, 5, 3, 1, 0, 40, 25, 12, 8, 2, 50, 60, 18};
 const int EXTLEN[] = {-1, 1000, 500, 1500, 0, 100, 2000, 50, 999, 1001, 300, -5, 10000, 1, 750, 1250};
 const int THREADS[] = {1, 2, 4, 8}; // the rewrite switches its reader at 4
+const int THREADS_MORE[] = {0, 3, 5, 6, 7, 12, 32, 64}; // H_UNMAPPED bits 5-7: another count (0: the one above); 32, 64: above the CPUs of a job
+// Size of a case. The default case is small because it is run millions of times; the larger sizes are choices of the
+// input like any other, so that the fuzzers can reach and mutate deep samples and large catalogs.
+const int DEPTH_SCALE[] = {1, 4, 16, 32};   // H_DEPTH bits 4-5: the sample is this many times deeper (up to 19,200 read pairs)
+const int STRUCT_REPEAT[] = {1, 4, 16, 32}; // H_FRAG bits 4-5: the first locus's structure this many times, literals between
+// Flanks that are not random sequence (H_READLEN bits 4-5): bit 4, each flank is a tandem of one unit (37 bases on
+// the left, 41 on the right: few distinct k-mers, many places a read fits); bit 5, the right flank repeats the left
+// one (a duplication: reads of one flank fit the other as well).
+const char *FLANK_UNIT[] = {"GATTACAGGCTTACCGATAGCTAGGCTTAACGGATCA", "TCCGATTGACCTAGGATCCAGTTGACGGTACCATGGACTTA"};
+// H_EXT bits 4-5: twice the loci without reads (up to 2,200). Larger catalogs are left out for their cost in the
+// original, about 2.3 ms per locus on one thread (README.md, limits).
+const int CATALOG_SCALE[] = {1, 1, 1, 2};
+// BGZF blocks that start at a record (H_NU2 bits 4-6, 0 = blocks of one size): at the record's first byte, as htslib
+// writes them, or this many bytes into it (the fields of a record's fixed part start at 4, 8, 12, ..., 32).
+const int BLOCK_SHIFT[] = {-1, 0, 4, 8, 20, 24, 28, 32};
 const int SPACING[] = {4000, 2500, 1500, 600, 300, 100, 40, 0};
 const int LEFTFLANK[] = {1300, 1000, 999, 1001, 600, 300, 100, 20, 5, 0, 2000, 1500, 150, 1100, 50, 1};
 const int BLOCK[] = {65280, 4096, 1024, 256, 100, 37, 16, 1};
 // extra loci without reads, on a contig of their own: catalog sizes around the rewrite's batch limits (256 loci per
-// decoding grain, 1,024 for parallel output). The original needs about 1.4 ms per locus, so the next limit (4,096,
-// parallel interval trees) would cost seconds per case and is left out.
+// decoding grain, 1,024 for parallel output).
 const int EXTRA_LOCI[] = {0, 3, 40, 255, 256, 257, 600, 1023, 1024, 1100, 513, 300, 1025, 100, 700, 900};
 // sample allele sizes: a delta to the reference size (below 32) or an absolute size
 int alleleSize(int code, int ref) {
@@ -175,7 +189,23 @@ struct Sim {
             // features
             // (templates added after the first 24 sit at the top of the byte's range, so that older inputs keep their meaning)
             const char *t = TEMPLATES[l[L_TEMPLATE] >= 256 - (NTEMPL - 24) ? 24 + (l[L_TEMPLATE] - (256 - (NTEMPL - 24))) : l[L_TEMPLATE] % 24];
+            string longStructure;   // the first locus's structure can be a multiple of its template
+            // With the path aligner at most 4 times: its time grows steeply with the repeats of a structure, in both
+            // programs alike (README.md, limits).
+            int multiple = STRUCT_REPEAT[(H(H_FRAG) >> 4) & 3];
+            if ((H(H_OPTIONS) & 2) && multiple > 4) multiple = 4;
+            if (k == 0 && multiple > 1) {
+                // Only the first copy keeps its optional sequences and swaps; in the others they are literals. Both
+                // programs need memory exponential in the number of such elements (README.md, limits).
+                for (int i = 0; i < multiple; i++) {
+                    string part = t;
+                    if (i) for (char &ch : part) if (ch == 'O' || ch == 'S') ch = 'L';
+                    longStructure += string(i ? "L" : "") + part;
+                }
+                t = longStructure.c_str();
+            }
             Rng rr(7 + k);
+            int degenerateLiterals = 0;
             for (const char *p = t; *p; p++) {
                 Feature f;
                 f.kind = *p == 'r' || *p == 'p' ? (*p == 'r' ? 'R' : 'P') : *p == 'Q' ? 'R' : *p;
@@ -191,7 +221,12 @@ struct Sim {
                     f.hap[0] = alleleSize(l[L_HAP1] + (slot ? l[L_HAPX] : 0), f.refCopies);
                     f.hap[1] = alleleSize(l[L_HAP2] + (slot ? l[L_HAPX] >> 4 : 0), f.refCopies);
                     break;
-                case 'L': f.a = LITERALS[(l[L_SMALL] >> 4) % NLIT]; break;
+                case 'L':
+                    f.a = LITERALS[(l[L_SMALL] >> 4) % NLIT];
+                    // At most 3 literals of a structure are the degenerate base; further ones are "A". Both programs
+                    // need memory exponential in their number (README.md, limits).
+                    if (f.a == "N" && ++degenerateLiterals > 3) f.a = "A";
+                    break;
                 case 'S': {
                     int s = (l[L_SMALL] + L.feats.size()) % NSWAP;
                     f.a = SWAPS[s][0]; f.b = SWAPS[s][1];
@@ -224,7 +259,7 @@ struct Sim {
             for (size_t k = 0; k < loci.size(); k++) if (loci[k].contigIndex == (int)ci) right = LEFTFLANK[(d[HDR + k * LREC + L_FIELDS] >> 4) & 15];
             contigs[ci].seq += randomSeq(5000 + ci * 17, right);
         }
-        nExtra = EXTRA_LOCI[H(H_NOISE) >> 4];
+        nExtra = EXTRA_LOCI[H(H_NOISE) >> 4] * CATALOG_SCALE[(H(H_EXT) >> 4) & 3];
         if (nExtra) contigs.push_back({string(chrPrefix ? "chr" : "") + "8", randomSeq(8888, 2600 + 40 * nExtra)});
         contigs.push_back({string(chrPrefix ? "chr" : "") + "9", randomSeq(9999, 3000)});
         // flank styles: N runs, soft-masked or IUPAC reference
@@ -238,6 +273,19 @@ struct Sim {
             if (m == 9) for (int i = 0; i < 6; i++) setAt(loci[k].end + 10 + i, 'N');
             if (style == 1) for (int i = std::max(0, loci[k].start - 200); i < std::min<int>(s.size(), loci[k].end + 200); i++) s[i] = tolower((unsigned char)s[i]);
             if (style == 2) { setAt(loci[k].start - 30, 'R'); setAt(loci[k].end + 30, 'Y'); }
+            if (int fl = (H(H_READLEN) >> 4) & 3) {   // tandem or duplicated flanks, up to 1,500 bases and up to the neighbouring loci
+                int lo = 0, hi = s.size();
+                for (size_t j = 0; j < loci.size(); j++) if (j != k && loci[j].contigIndex == loci[k].contigIndex) {
+                    if (loci[j].end <= loci[k].start) lo = std::max(lo, loci[j].end);
+                    if (loci[j].start >= loci[k].end) hi = std::min(hi, loci[j].start);
+                }
+                int a = std::max(lo, loci[k].start - 1500), b = std::min(hi, loci[k].end + 1500);
+                if (fl & 1) {
+                    for (int i = a; i < loci[k].start; i++) s[i] = FLANK_UNIT[0][(loci[k].start - 1 - i) % 37];
+                    for (int i = loci[k].end; i < b; i++) s[i] = FLANK_UNIT[1][(i - loci[k].end) % 41];
+                }
+                if (fl & 2) for (int i = loci[k].end; i < b && a + (i - loci[k].end) < loci[k].start; i++) s[i] = s[a + (i - loci[k].end)];
+            }
             if (style == 3) { // the flank continues with motif copies that the catalog region does not cover
                 const Feature *f = nullptr;
                 for (const Feature &g : loci[k].feats) if (g.kind == 'R' || g.kind == 'P') { f = &g; break; }
@@ -414,13 +462,15 @@ struct Sim {
         readLen = READLEN[H(H_READLEN) & 15];
         fragLen = FRAGLEN[H(H_FRAG) & 15];
         int cover = COVER[H(H_DEPTH) & 15];
-        // the cost of a case: at most 600 read pairs and 120,000 read bases (long reads are quadratic in the aligners)
-        size_t budget = std::min<size_t>(600, 120000 / (2 * std::max(1, readLen)) + 1);
+        // the cost of a case: 600 read pairs and 120,000 read bases (long reads are quadratic in the aligners), times
+        // the depth scale the input chose
+        const size_t scale = DEPTH_SCALE[(H(H_DEPTH) >> 4) & 3];
+        size_t budget = scale * std::min<size_t>(600, 120000 / (2 * std::max(1, readLen)) + 1);
         for (size_t k = 0; k < loci.size(); k++) {
             const Locus &L = loci[k];
             const uint8_t *l = d + HDR + k * LREC;
             const string &ref = contigs[L.contigIndex].seq;
-            int lcov = l[L_COVER] ? COVER[l[L_COVER] & 15] : cover;
+            int lcov = (l[L_COVER] & 15) ? COVER[l[L_COVER] & 15] : cover;   // 0: the depth of the header
             int nhap = (l[L_COVER] & 0x80) ? 1 : 2;
             for (int h = 0; h < nhap; h++) {
                 Rng r(H(H_SEED) * 1000003ULL + k * 101 + h);
@@ -439,7 +489,7 @@ struct Sim {
                     if (off < (int)(left.size() + mid.size())) return L.start + std::min(off - (int)left.size(), refMid);
                     return L.end + off - (int)(left.size() + mid.size());
                 };
-                int pairs = (int)((long)lcov * hap.size() / (2 * std::max(1, readLen)));
+                int pairs = (int)((long)scale * lcov * hap.size() / (2 * std::max(1, readLen)));
                 // stutter: each fragment draws its own repeat sizes around the haplotype's (many candidate sizes)
                 static const int JITTER[] = {0, 2, 10, 30};
                 int jit = JITTER[(l[L_COVER] >> 5) & 3];
@@ -469,7 +519,7 @@ struct Sim {
             const Feature *f = nullptr;
             for (const Feature &g : L.feats) if (g.kind == 'R' || g.kind == 'P') { f = &g; break; }
             static const int IRR[] = {0, 1, 2, 5, 10, 20, 40, 80};
-            int nIrr = f ? IRR[l[L_IRR] & 7] : 0;
+            int nIrr = f ? IRR[l[L_IRR] & 7] * (int)scale : 0;
             for (int i = 0; i < nIrr && budget; i++, budget--) {
                 string u = concrete(f->a, r), run = rep(u, readLen / std::max<size_t>(1, u.size()) + 2);
                 string s1 = run.substr(r.below(u.size()), readLen), s2 = revcomp(run.substr(r.below(u.size()), readLen));
@@ -495,7 +545,7 @@ struct Sim {
         // (with extra loci: among them, so that one pair is near many loci)
         int nc = nExtra ? contigs.size() - 2 : contigs.size() - 1;
         const string &ex = contigs[nc].seq;
-        for (int i = 0; i < (H(H_NOISE) & 15); i++) {
+        for (int i = 0; i < (H(H_NOISE) & 15) * ((H(H_DEPTH) & 0x40) ? 32 : 1); i++) {   // H_DEPTH bit 6: 32 times as many
             int rl = std::min<int>(readLen, 200), lo = nExtra ? 1300 : 2200;
             int s = lo + r.below(std::max<int>(1, (int)ex.size() - lo - 2 * rl - 10));
             if (s + 2 * rl > (int)ex.size()) continue;
@@ -508,6 +558,13 @@ struct Sim {
         else if (order == 1) { Rng s(H(H_SEED) + 5); for (size_t i = recs.size(); i > 1; i--) std::swap(recs[i - 1], recs[s.below(i)]); }
         else if (order == 2) std::stable_sort(recs.begin(), recs.end(), [](const bam::Rec &a, const bam::Rec &b) { return a.name < b.name; });
         else std::reverse(recs.begin(), recs.end());
+        if (H(H_READLEN) & 0x40) {   // every pair's first record, then all the partners: a reader must hold all first mates at once
+            std::set<string> seen;
+            vector<bam::Rec> first, rest;
+            for (bam::Rec &r : recs) (seen.insert(r.name).second ? first : rest).push_back(r);
+            recs = first;
+            recs.insert(recs.end(), rest.begin(), rest.end());
+        }
         Rng u(H(H_SEED) + 9);
         for (int i = 0; i < (H(H_UNMAPPED) & 15); i++) {
             bam::Rec a;
@@ -542,6 +599,7 @@ struct Sim {
             case 6: s = revcomp(s); break;
             case 7: if (s.size() > 4) { s[1] = '='; s[2] = 'R'; s[3] = '.'; } break;
             }
+            if (e[4] & 0x08) for (size_t i = 120; i < s.size(); i += 40) s[i] = comp(s[i]);   // an exact head, then a mismatch every 40 bases
             string nm = "x" + std::to_string(x);
             bam::Rec a;
             a.name = nm; a.ref = L.contigIndex; a.pos = pos; a.mref = L.contigIndex; a.mpos = pos + 100; a.mapq = e[5] & 63;
@@ -563,7 +621,11 @@ struct Sim {
             case 7: a.seq.clear(); a.qual.clear(); a.cigar = "*"; break;                       // no sequence
             case 8: a.flag |= 0x400; b.flag |= 0x400; break;                                   // duplicates
             case 9: a.flag |= 0x200; break;                                                    // QC fail
-            case 10: a.cigar = "10S" + std::to_string(std::max<int>(1, (int)s.size() - 10)) + "M"; break; // soft clip
+            case 10: { // soft clip. The CIGAR must cover exactly the sequence: 10S1M on a 10-base read is not valid SAM
+                int clip = adapterOpt("invalid_reads_files", "0") == "1" ? 10 : std::min<int>(10, (int)s.size() - 1);
+                if (clip > 0) a.cigar = std::to_string(clip) + "S" + std::to_string(std::max<int>(1, (int)s.size() - clip)) + "M";
+                break;
+            }
             case 11: recs.push_back(a); recs.push_back(b); break;                              // the pair twice (4 records, one name)
             case 12: { bam::Rec t = a; t.flag = 0x1 | 0x40; recs.push_back(t); break; }        // a third record with the name
             case 13: a.flag |= 0x40 | 0x80; break;                                             // both first and second
@@ -578,6 +640,7 @@ struct Sim {
             case 22: a.cigar = std::to_string(s.size() / 2) + "M500N" + std::to_string(s.size() - s.size() / 2) + "M"; break;
             case 23: a.seq = s.substr(0, 1); a.qual = a.qual.substr(0, a.qual.empty() ? 0 : 1); a.cigar = "1M"; break; // one base
             }
+            if (kind == 16 && (e[4] & 0x10)) { b.ref = a.ref; b.pos = a.pos; }   // the unmapped mate carries its mate's position (the SAM convention)
             switch (e[7] & 7) { // a second property of the same record
             case 1: a.pos = -1; break;                                                          // POS 0 on a named contig
             case 2: for (size_t i = 0; i < a.seq.size(); i += 7) a.seq[i] = "RYKMSWBDHV"[(i / 7) % 10]; break; // IUPAC codes
@@ -645,16 +708,37 @@ struct Sim {
         bool eof = !(H(H_CONTAINER) & 4);
         int level = cont == 3 ? 0 : (H(H_CONTAINER) & 8) ? 9 : 1;
         c.vars["reads_ext"] = ".bam";
-        vector<size_t> starts;
-        c.put("reads.bam", bam::bgzf(data, block, level, eof, &starts));
+        vector<size_t> starts, ustarts;
+        int shift = BLOCK_SHIFT[(H(H_NU2) >> 4) & 7];
+        int os = (H(H_NU2) & 0x80) ? 3 : 255;   // another operating-system byte in the gzip headers (3 = Unix)
+        if (shift < 0 && os == 255) c.put("reads.bam", bam::bgzf(data, block, level, eof, &starts));
+        else {
+            // a new block wherever the next record would not fit into `block` bytes, `shift` bytes into that record
+            vector<size_t> cuts;
+            size_t last = 0;
+            if (shift < 0) for (size_t u = block; u < data.size(); u += block) cuts.push_back(u);
+            else for (const bam::Span &x : spans) if (x.to + shift - last > block && x.from + shift > last && x.from + shift < data.size()) cuts.push_back(last = x.from + shift);
+            c.put("reads.bam", bam::bgzfAt(data, cuts, level, eof, os, starts, ustarts));
+            if (shift >= 0) c.tags.insert("record-blocks");
+        }
+        const vector<size_t> *us = ustarts.empty() ? nullptr : &ustarts;
         // an index next to the reads: the rewrite's streaming reader uses one when it is there, the original never does
         int ix = H(H_RES) & 3;
-        if (ix == 1) c.put("reads.bam.bai", bam::bai(spans, refs.size(), block, starts));
-        if (ix == 2) c.put("reads.bam.bai", bam::bai({}, refs.size(), block, starts));          // valid, but lists nothing
+        // ... and an index that does not fit the file (H_EXT bits 6-7): offsets one byte into each record, one
+        // reference fewer than the header has, or offsets beyond the end of the file
+        int iv = ix ? (H(H_EXT) >> 6) & 3 : 0;
+        vector<bam::Span> sp = spans;
+        size_t nref = refs.size();
+        if (iv == 1) for (bam::Span &x : sp) { x.from++; x.to++; }
+        if (iv == 2 && nref > 1) nref--;
+        vector<size_t> st = starts;
+        if (iv == 3) for (size_t &v : st) v += starts.back() + 70000;
+        if (ix == 1) c.put("reads.bam.bai", bam::bai(sp, nref, block, st, us));
+        if (ix == 2) c.put("reads.bam.bai", bam::bai({}, nref, block, st, us));          // valid, but lists nothing
         if (ix == 3) { // stale: the offsets of another record order
-            vector<bam::Span> s2 = spans;
+            vector<bam::Span> s2 = sp;
             for (size_t i = 0; i + 1 < s2.size(); i += 2) { std::swap(s2[i].ref, s2[i + 1].ref); std::swap(s2[i].beg, s2[i + 1].beg); std::swap(s2[i].end, s2[i + 1].end); }
-            c.put("reads.bam.bai", bam::bai(s2, refs.size(), block, starts));
+            c.put("reads.bam.bai", bam::bai(s2, nref, block, st, us));
         }
         if (ix) c.tags.insert(ix == 1 ? "index" : ix == 2 ? "index-empty" : "index-stale");
         if (block < 65280) c.tags.insert("block" + std::to_string(block));
@@ -668,10 +752,10 @@ struct Sim {
         if (o & 2) { c.args.push_back("--aligner"); c.args.push_back("path-aligner"); c.tags.insert("path-aligner"); }
         int th = THREADS[(o >> 2) & 3];
         if (th == 8 && (H(H_RES) & 0x40)) th = 16;   // the rewrite's queue budget changes at 16
+        if (THREADS_MORE[H(H_UNMAPPED) >> 5]) th = THREADS_MORE[H(H_UNMAPPED) >> 5];
         if (th != 1) { c.args.push_back("--threads"); c.args.push_back(std::to_string(th)); c.tags.insert("threads" + std::to_string(th)); }
-        int ext = EXTLEN[H(H_EXT) & 15];
-        // input constraint (README.md): the documented range of the option
-        if (ext != -1 && (ext < 500 || ext > 1500) && adapterOpt("extension_range", "documented") == "documented") ext = -1;
+        int ext = EXTLEN[H(H_EXT) & 15];   // also outside 500-1500: neither program rejects any value (README.md, notes)
+        if (ext < -1 && adapterOpt("negative_extension", "0") != "1") ext = -ext;   // input constraint: not below 0
         if (ext != -1) { c.args.push_back("--region-extension-length"); c.args.push_back(std::to_string(ext)); c.tags.insert("ext" + std::to_string(ext)); }
         if (o & 0x30) { c.args.push_back("--log-level"); c.args.push_back((H(H_RES) & 0x80) ? "error" : (o & 0x30) == 0x30 ? "trace" : (o & 0x10) ? "warn" : "debug"); }
         if (o & 0x40) { c.args.push_back("--disable-bamlet-output"); c.tags.insert("nobamlet"); }
@@ -742,8 +826,8 @@ struct Sim {
             for (const Feature &f : L.feats) note += string(1, f.kind) + (f.kind == 'L' ? "" : ":" + f.a + ":ref" + std::to_string(f.refCopies) + ":" + std::to_string(f.hap[0]) + "/" + std::to_string(f.hap[1])) + " ";
             note += "}";
         }
-        // input properties on which the original's behaviour is undefined (see README.md, Exemptions)
-        // (the original queries its genome mask with the mate's contig before it looks at any flag)
+        // the property behind bugs/eh-genome-mask-out-of-bounds (the original queries its genome mask with the mate's
+        // contig before it looks at any flag)
         for (const bam::Rec &r : recs) if (r.mref < 0 && r.ref >= 0) { c.tags.insert("mate-without-contig"); break; }
         c.note = note + "; " + std::to_string(recs.size()) + " records, read length " + std::to_string(readLen) + ", fragment " + std::to_string(fragLen);
         return true;
@@ -813,6 +897,17 @@ bool dfz_decode(const uint8_t *data, size_t size, Case &c) {
 
 // The realigned BAM is compared as header plus the multiset of decoded records (record order and compression are
 // documented to differ).
+// Exemptions: differences that are intended, or that say nothing. Each condition names the property of the input
+// and the outcome that is expected; anything else that differs on the same input still counts (README.md).
+void dfz_compare(const Case &c, const Run &a, const Run &b, vector<Finding> &out) {
+    auto died = [](const Run &r) { return r.cls.compare(0, 3, "sig") == 0; };
+    // an invalid value of an option that only the rewrite has: the rewrite rejects it, the original never sees it
+    if (c.tags.count("rewrite-option-error") && a.cls == "ok" && b.cls == "err") out.clear();
+    // a region written end-start is outside what the original defines (README.md, "Input constraints"): the
+    // outputs say nothing about the rewrite. A program dying from a signal still counts
+    if (c.tags.count("inverted-region") && !died(a) && !died(b)) out.clear();
+}
+
 bool dfz_normalize(const Case &, const string &file, int, string &content) {
     if (file.size() < 4 || file.compare(file.size() - 4, 4, ".bam") != 0) return false;
     string text;

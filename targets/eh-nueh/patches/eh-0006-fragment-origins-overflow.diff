@@ -1,0 +1,14 @@
+--- a/ehunter/genotyping/FragLogliks.cpp
++++ b/ehunter/genotyping/FragLogliks.cpp
+@@ -65,7 +65,10 @@
+ double FragLogliks::computeLoglik(const StrAlign& readAlign, const StrAlign& mateAlign, int alleleMotifCount) const
+ {
+     const int numPossibleStarts = alleleMotifCount * motifLen_ + fragLen_ + 1;
+-    const int numPossibleOrigins = numPossibleStarts * numPossibleStarts / 2;
++    // The square passes the range of int for alleles and fragments of 46,341 bases and more. Unsigned arithmetic
++    // gives the value that the overflowing signed product has on the tested compilers, without the undefined behaviour.
++    const int numPossibleOrigins
++        = static_cast<int>(static_cast<unsigned>(numPossibleStarts) * static_cast<unsigned>(numPossibleStarts)) / 2;
+     int numOriginsForThisFrag = 1;
+ 
+     if (readAlign.type() != StrAlign::Type::kInRepeat && mateAlign.type() == StrAlign::Type::kInRepeat)

@@ -1,0 +1,13 @@
+[
+{
+    "LocusId": "L0",
+    "LocusStructure": "(CNG)*",
+    "ReferenceRegion": "chr1:0-15",
+    "VariantType": "RareRepeat",
+    "VariantId": "L0_v0",
+    "OfftargetRegions": ["chr9:500-560", "chr9:1200-1260"],
+    "TargetRegion": ["chr1:0-215"],
+    "ErrorRate": 0.02,
+    "LikelihoodRatioThreshold": 10000
+}
+]

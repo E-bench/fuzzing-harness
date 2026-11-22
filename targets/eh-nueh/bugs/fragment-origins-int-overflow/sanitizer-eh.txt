@@ -1,0 +1,17 @@
+eh  ubsan:signed integer overflow: N * N cannot be represented in type 'int'  ehunter/genotyping/FragLogliks.cpp:68 in ehunter::strgt::FragLogliks::computeLoglik
+surface locus, input inputs/995f9a420953.bin
+
+ehunter/genotyping/FragLogliks.cpp:68:54: runtime error: signed integer overflow: 48493 * 48493 cannot be represented in type 'int'
+    #0 0x0000007571ae in ehunter::strgt::FragLogliks::computeLoglik(ehunter::StrAlign const&, ehunter::StrAlign const&, int) const ehunter/genotyping/FragLogliks.cpp:68:54
+    #1 0x000000756c71 in ehunter::strgt::FragLogliks::getLoglik(int, int) ehunter/genotyping/FragLogliks.cpp:60:27
+    #2 0x0000006de826 in ehunter::strgt::getTopFragLogliks(ehunter::strgt::FragLogliks&, std::unordered_set<int, std::hash<int>, std::equal_to<int>, std::allocator<int>> const&) ehunter/genotyping/StrGenotyper.cpp:92:50
+    #3 0x0000006dedf1 in ehunter::strgt::genotype(ehunter::AlleleCount, int, int, int, ehunter::strgt::AlignMatrix&) ehunter/genotyping/StrGenotyper.cpp:108:37
+    #4 0x00000069ade7 in ehunter::RepeatAnalyzer::analyze(ehunter::LocusStats const&) ehunter/locus/RepeatAnalyzer.cpp:96:26
+    #5 0x000000691023 in ehunter::locus::LocusAnalyzer::analyze(ehunter::Sex, boost::optional<double>) ehunter/locus/LocusAnalyzer.cpp:165:80
+    #6 0x0000006793a7 in ehunter::(anonymous namespace)::analyzeLocus(int, ehunter::Sex, std::vector<std::unique_ptr<ehunter::locus::LocusAnalyzer, std::default_delete<ehunter::locus::LocusAnalyzer>>, std::allocator<std::unique_ptr<ehunter::locus::LocusAnalyzer, std::default_delete<ehunter::locus::LocusAnalyzer>>>>&, std::vector<ehunter::LocusFindings, std::allocator<ehunter::LocusFindings>>&, ehunter::(anonymous namespace)::SampleFindingsThreadSharedData&, std::vector<ehunter::(anonymous namespace)::SampleFindingsThreadLocalData, std::allocator<ehunter::(anonymous namespace)::SampleFindingsThreadLocalData>>&) ehunter/sample/HtsStreamingSampleAnalysis.cpp:199:56
+    #7 0x7f165535bae3  (libstdc++.so.6+0xdbae3) (BuildId: 47157312fc3932428cfbf4bff7a343d9c7e17e24)
+    #8 0x0000004e20a6 in asan_thread_start(void*) llvm/compiler-rt/lib/asan/asan_interceptors.cpp:239:28
+    #9 0x7f1654fdd2f9 in start_thread (/lib64/libc.so.6+0x8b2f9) (BuildId: ee05e7d5c6584848622af23de57c297fd3081b70)
+    #10 0x7f165506243f in __GI___clone3 (/lib64/libc.so.6+0x11043f) (BuildId: ee05e7d5c6584848622af23de57c297fd3081b70)
+
+SUMMARY: UndefinedBehaviorSanitizer: undefined-behavior ehunter/genotyping/FragLogliks.cpp:68:54 

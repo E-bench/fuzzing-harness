@@ -1,0 +1,15 @@
+[
+{
+    "LocusId": "L0",
+    "LocusStructure": "(CAG)*ACGTAC(CCCCGCCCCGCG)*ACGTAC(CCCCGCCCCGCG)*ACGTAC(CCCCGCCCCGCG)*",
+    "ReferenceRegion": ["1:1300-1330", "1:1336-1408", "1:1414-1486", "1:1492-1564"],
+    "VariantType": ["Repeat", "Repeat", "Repeat", "Repeat"]
+},
+{
+    "LocusId": "L1",
+    "LocusStructure": "(CAG)*CAACAG(AT)*",
+    "ReferenceRegion": ["2:1300-1330", "2:1336-1348"],
+    "VariantType": ["RareRepeat", "RareRepeat"],
+    "OfftargetRegions": ["9:800-860", "9:1500-1560"]
+}
+]

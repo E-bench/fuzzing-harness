@@ -3,7 +3,8 @@
 
   report.py <target work dir> <tag> <target.toml>
 
-Reads runs/<tag>/*/{meta.txt,stats.tsv}, recheck/<tag>/{summary.json,remaining.tsv} and coverage/<tag>/coverage.json
+Reads runs/<tag>/*/{meta.txt,stats.tsv}, recheck/<tag>/{summary.json,remaining.tsv}, sanitize/<tag>/{summary.json,findings.tsv}
+and coverage/<tag>/coverage.json
 (the last two when they exist) and writes report/<tag>/REPORT.md.
 """
 import collections, json, os, statistics, sys, tomllib
@@ -36,7 +37,7 @@ for run in sorted(os.listdir(runs_dir)):
                  "host": m.get("host", ""), "elapsed": last[0], "execs": last[1], "corpus": last[2], "signatures": last[3],
                  "finished": "end" in m})
 rck = load(os.path.join(work, "recheck", tag, "summary.json"))
-remaining = []   # status, surface, signature, exempt, fuzzers, input
+remaining = []   # status, surface, signature, fuzzers, input, seconds at the long limit
 try:
     remaining = [l.rstrip("\n").split("\t") for l in open(os.path.join(work, "recheck", tag, "remaining.tsv"))][1:]
 except OSError:
@@ -44,11 +45,11 @@ except OSError:
 cov = load(os.path.join(work, "coverage", tag, "coverage.json"))
 engines = sorted({r["engine"] for r in runs})
 surfaces = sorted({r["surface"] for r in runs})
-open_ = [r for r in remaining if r[0] in ("differs", "fuzz-only") and not r[3]]
+open_ = [r for r in remaining if r[0] != "flaky" and not (r[0].startswith(("timeout", "memory")) and r[0].split(":", 1)[1] == A["name"])]
 
 
 def found_by(r):
-    return {x.split(":")[0]: int(x.split(":")[1]) for x in r[4].split()}
+    return {x.split(":")[0]: int(x.split(":")[1]) for x in r[3].split()}
 
 
 L = [f"# {cfg.get('title', cfg['name'])}: campaign `{tag}`", ""]
@@ -61,8 +62,10 @@ L += [f"{len(runs)} runs ({len(engines)} fuzzers x {len(surfaces)} surfaces), {c
 if rck:
     L += [f"The harness stored {rck['stored']:,} difference signatures. Replayed on the reference builds under the current configuration"
           + (f" (with the temporary patches of {', '.join(rck['patched'])})" if rck.get("patched") else "") + ",",
-          f"**{rck['to_account_for']:,} still differ and are not accounted for**, {rck['exempt']:,} still differ and fall under an exemption,",
-          f"{rck['flaky']:,} differ only in some replays and {rck['gone']:,} no longer differ."
+          f"**{rck['to_account_for']:,} still differ and are not accounted for**,",
+          f"{rck['flaky']:,} differ only in some replays, {rck.get('timeout_deferred', 0) + rck.get('memory_deferred', 0):,} are put off (only the original passed a limit; {rck.get('memory', 0):,} memory limits, "
+          f"{rck.get('timeout', 0):,} time limits in all, {rck.get('timeout_long', 0):,} of them also with {rck.get('long_limit_ms', 0) // 1000} s) and {rck['gone']:,} no longer differ"
+          + (f" ({rck['gone_timeout_under_load']:,} of them a time limit that the rewrite passed while other replays ran and not alone)" if rck.get("gone_timeout_under_load") else "") + "."
           + (f" Of those to account for, {rck['fuzz_only']:,} differ only on the instrumented builds (the difference depends on the build)." if rck.get("fuzz_only") else "")]
 L.append("")
 
@@ -95,12 +98,28 @@ if rck:
           f"`recheck/{tag}/remaining.tsv` lists every stored input on which the programs still differ, with the input itself",
           f"(`recheck/{tag}/inputs/`). They are worked off one at a time: take one, find the cause, settle it as an input constraint,",
           "an exemption, a normalisation or a bug with a temporary patch, and recheck (`docs/WORKFLOW.md`). The first of them:", "",
-          "| Surface | Signature | Found by | Input |", "|---|---|---|---|"]
+          "| Status | Surface | Signature | Found by | Input |", "|---|---|---|---|---|"]
     for r in open_[:25]:
         sig = r[2].replace("|", "\\|")
-        L.append(f"| {r[1]} | `{sig[:230]}` | {', '.join(found_by(r))} | `{r[5]}` |")
+        L.append(f"| {r[0]} | {r[1]} | `{sig[:230]}` | {', '.join(found_by(r))} | `{r[4]}` |")
     if len(open_) > 25:
-        L.append(f"| | ... {len(open_) - 25:,} more | | |")
+        L.append(f"| | | ... {len(open_) - 25:,} more | | |")
+    L.append("")
+san = load(os.path.join(work, "sanitize", tag, "summary.json"))
+if san:
+    L += ["## Memory errors and undefined behaviour", "",
+          f"{san['replayed']:,} inputs (seeds, corpora, stored differences) were replayed on builds with AddressSanitizer, UndefinedBehaviorSanitizer and",
+          "the C++ library's assertions. Each row is a bug of that program, whether or not the outputs differ"
+          f" (`sanitize/{tag}/findings.tsv`, reports and inputs next to it):", ""]
+    try:
+        rows = [l.rstrip("\n").split("\t") for l in open(os.path.join(work, "sanitize", tag, "findings.tsv"))][1:]
+    except OSError:
+        rows = []
+    if rows:
+        L += ["| Program | Kind | Place | Inputs | Report |", "|---|---|---|---|---|"]
+        L += [f"| {r[0]} | {r[1].replace('|', '/')} | `{r[2]}` | {r[3]} | `{r[5]}` |" for r in rows[:40]]
+    else:
+        L.append("None reported.")
     L.append("")
 if cov:
     L += ["## Coverage", "", "| Program | Functions | Lines | Branches |", "|---|---|---|---|"]

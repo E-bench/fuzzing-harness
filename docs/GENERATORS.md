@@ -79,7 +79,7 @@ alignment scores), an index file next to the reads, and a second repeat type per
 - **Hit both sides of every threshold.** Tables should contain the boundary values of the conditions found in step 3
   (`limit - 1`, `limit`, `limit + 1`), not a smooth range. Sizes in the tables of eh-nueh are chosen this way (read
   length 150/151, quality 19/20, extension 999/1000/1001).
-- **Tag causes.** Add a tag for each non-default option and for input properties an exemption rule refers to
+- **Tag causes.** Add a tag for each non-default option and for the input properties that explain a difference
   (`c.tags`). Do not tag data (sizes, positions): tags multiply signatures.
 - **Mind the cost per case, and bound it by work, not by count.** Throughput is cases per second, and a few heavy
   cases dominate both fuzzing and the coverage replay, which runs every kept input once more. Keep the default case
@@ -90,6 +90,12 @@ alignment scores), an index file next to the reads, and a second repeat type per
   `./dfz replay` prints each program's time per case, and a campaign's `stats.tsv` shows a run whose cases per CPU
   second fall far below the others. Make expensive shapes (very long reads, many threads, large catalogs) explicit
   choices, never the default.
+- **The largest case must end well inside the limits.** A case that takes the original 19 of the 20 seconds on an
+  idle machine passes the limit under a campaign's load: it is generated, costs two time limits, and is never
+  compared. Measure the seeds (`./dfz run <target> SURFACE=<s> work/<target>/seeds/<s>`: largest memory and longest
+  time of both programs) after every change of a size, and keep the longest at a fraction of the time limit.
+- **A size tier has to earn its cost.** Leave its seeds out and run the seed coverage again: what the total loses
+  is what the tier reaches and nothing smaller does. A tier that loses nothing is only cost.
 - **Record every limit on valid input.** Whenever the generator leaves out inputs that the programs accept (a cap
   on size for cost, a table with a few values, a format it cannot write, an option range), write it into the
   target's README under "Valid inputs the generator does not produce": the limit, why it is there, and what stays
@@ -127,8 +133,9 @@ When the root cause of a difference turns out to be such an input:
 2. **Stop generating it.** Give the generator an `[adapter]` option for the shape, off by default, and make the raw
    surfaces reject it in `dfz_decode` (return false) where a cheap check can tell. The constraint is then explicit,
    visible in `target.toml` and reversible, instead of a silent gap in the generator.
-3. **Tag it when it is on.** With the option switched on, tag the cases and add an `[[exempt]]` rule for the tag, so
-   that a campaign that deliberately includes the shape still separates these cases from the rest.
+3. **Tag it when it is on.** With the option switched on, tag the cases, so that a campaign that deliberately
+   includes the shape shows them apart from the rest, and say in `dfz_compare` what still counts on such a case
+   (eh-nueh: only a program that dies from a signal).
 
 What is not an input constraint: an input the original handles in a defined way, however unusual (an empty catalog,
 an unsorted file, an option at the edge of its range); and an input the original rejects with an error (the rewrite

@@ -1,0 +1,5 @@
+2026-11-22T03:20:46,[Starting ExpansionHunter v5.0.0]
+2026-11-22T03:20:46,[Analyzing sample reads]
+2026-11-22T03:20:46,[Initializing reference /tmp/dfz_one_1764566/1764566/case/in/ref.fa]
+2026-11-22T03:20:46,[Loading variant catalog from disk /tmp/dfz_one_1764566/1764566/case/in/catalog.json]
+terminate called without an active exception

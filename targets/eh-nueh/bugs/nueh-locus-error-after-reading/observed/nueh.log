@@ -1,0 +1,12 @@
+2026-11-22T04:44:10,[Starting NuExpansionHunter v1.0.0 (based on ExpansionHunter v5.0.0)]
+2026-11-22T04:44:10,[Analyzing sample reads]
+2026-11-22T04:44:10,[Initializing reference /tmp/dfz_one_75756/75756/case/in/ref.fa]
+[W::bam_hdr_read] EOF marker is absent. The input is probably truncated
+2026-11-22T04:44:10,[Loading variant catalog from disk /tmp/dfz_one_75756/75756/case/in/catalog.json]
+2026-11-22T04:44:10,[Running sample analysis in streaming mode]
+2026-11-22T04:44:10,[Thread pools: compute=6, decode=4, encode=0 (I/O pools and coordinator threads are additional)]
+2026-11-22T04:44:10,[Initializing all loci]
+2026-11-22T04:44:10,[Streaming reads]
+[W::bam_hdr_read] EOF marker is absent. The input is probably truncated
+2026-11-22T04:44:14,[Analyzing read evidence]
+2026-11-22T04:44:14,[Region L1 must not have more than one rare repeat]

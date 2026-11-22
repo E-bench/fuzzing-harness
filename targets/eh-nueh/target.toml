@@ -9,13 +9,16 @@ repo = "https://github.com/Illumina/ExpansionHunter"
 commit = "9f5db1d4ab72016b2d93330b9792842d71582622"      # tag v5.0.0
 # temporary patches that hide known bugs of the original, so that fuzzing goes on behind them (bugs/<name>/README.md)
 patches = ["patches/eh-0001-worker-thread-exceptions.diff", "patches/eh-0002-genome-mask-negative-contig.diff",
-           "patches/eh-0003-release-queue-after-exception.diff"]
+           "patches/eh-0003-release-queue-after-exception.diff", "patches/eh-0004-bamlet-writer-constructor.diff",
+           "patches/eh-0005-variant-id-count.diff", "patches/eh-0006-fragment-origins-overflow.diff"]
 
 [side.b]
 name = "nueh"
 title = "NuExpansionHunter"
 repo = "https://github.com/BioCode-Commons/NuExpansionHunter"
 commit = "96bdca4e854e3e4bd6c04f3cf211c633079f08d5"      # main, 2026-11-21
+patches = ["patches/nueh-0001-empty-catalog-memcpy.diff", "patches/nueh-0002-variant-id-count.diff",
+           "patches/nueh-0003-fragment-origins-overflow.diff"]
 
 [build]
 deps = "bash {target}/build.sh deps {side} {src} {deps}"
@@ -24,6 +27,10 @@ data = "python3 -I {target}/make_data.py {bin}/dfz_tool {data} {seeds}"
 adapter = "adapter.cpp"
 harness_libs = "-lz"                # the adapter writes and reads BGZF
 ref = { cc = "gcc", cxx = "g++" }   # both projects document GCC; equal floating-point results need the same compiler
+# Sanitizer builds without the alignment check: htslib's helpers access integers through a type it declares as
+# unaligned (hts_endian.h), clang's sanitizer reports that all the same, and the rewrite's own code uses the helpers
+# on almost every run (README.md, notes).
+san_flags = "-fno-sanitize=alignment"
 
 [run]
 # One command line for both programs. {in}: the case's input directory, {out}: this side's output directory,
@@ -31,6 +38,10 @@ ref = { cc = "gcc", cxx = "g++" }   # both projects document GCC; equal floating
 argv = ["--reads", "{in}/reads{reads_ext}", "--reference", "{in}/ref.fa", "--variant-catalog", "{in}/catalog.json",
         "--output-prefix", "{out}/r", "--analysis-mode", "streaming"]
 timeout_ms = 20000
+# Resident memory of one run: six times what the largest seed needs (174 MB, the original on a catalog of 2,200
+# loci; its longest run takes 5.2 s). What passes this limit is a program allocating without bound (README.md,
+# limits). A campaign job needs this much memory per CPU.
+memory_mb = 1024
 exit = "class"                      # ok / error exit / signal / timeout must agree; exit codes are not compared
 error_line = "last"                 # a failed run's last output line goes into the signature (digits and paths masked)
 error_strip = "^[0-9T:,-]+|^terminate called.*|^ *what\\(\\): *"   # log time stamps and the C++ runtime's abort banner
@@ -42,14 +53,14 @@ output = [
 
 [adapter]
 rewrite_options = 1                 # also pass the rewrite's own options (codec threads, queue budget, catalog cache)
-rewrite_option_errors = 0           # 1: also invalid uses of them (the programs then differ by design: tag rewrite-option-error, exempt)
+rewrite_option_errors = 0           # 1: also invalid uses of them (the programs then differ by design: tag rewrite-option-error, removed in dfz_compare)
 base_cases = 6                      # base cases under {data}/base for the raw surfaces (make_data.py)
 # Input constraints (README.md, "Input constraints"): shapes of input the original does not define and on which the
 # programs differed. The generator leaves them out unless they are switched on here.
 inverted_regions = 0                # 1: also write regions with start > end (cases get the tag inverted-region)
 invalid_reads_files = 0             # 1: also SAM text without @SQ lines, read names over 254 characters
+negative_extension = 0              # 1: also --region-extension-length -5 (cases get the tag ext-5); 0: 5 in its place
 # Not a constraint, a choice of range (README.md, "Notes on both programs"):
-extension_range = "documented"      # "any": also --region-extension-length outside 500-1500
 
 # Surfaces: what the fuzz input means (decoded in adapter.cpp).
 [surface.locus]                     # structured: genome, catalog, simulated sample, options
@@ -77,17 +88,3 @@ unreachable = "unreachable.tsv"     # branch outcomes that streaming mode and th
 [[coverage.out_of_scope]]
 match = "/sample/(HtsSeekingSampleAnalysis|HtsFileSeeker|MateExtractor|IndexBasedDepthEstimate)\\."
 reason = "seeking mode (the command line in [run] selects streaming)"
-
-# Differences that the rewrite documents as intended (docs/07_Performance.md, "Identity guarantee and its limits").
-# Matching cases stay in the list of remaining differences, marked exempt.
-[[exempt]]
-match = "mate-without-contig"
-reason = "limit 6: a paired record whose mate has no contig; the original indexes its genome mask out of bounds"
-
-[[exempt]]
-match = "inverted-region"
-reason = "input constraint: a region with start > end (the original's assert(start <= stop) is compiled out)"
-
-[[exempt]]
-match = "rewrite-option-error"
-reason = "an invalid use of an option that only the rewrite has: the original has no counterpart"

@@ -1,0 +1,29 @@
+{
+  "LocusResults": {
+    "L0": {
+      "AlleleCount": 2,
+      "Coverage": 6.972972972972973,
+      "FragmentLength": 342,
+      "LocusId": "L0",
+      "ReadLength": 150,
+      "Variants": {
+        "L0": {
+          "CountsOfFlankingReads": "(8, 1)",
+          "CountsOfInrepeatReads": "(50, 50), (51, 30)",
+          "CountsOfSpanningReads": "()",
+          "Genotype": "8/8050",
+          "GenotypeConfidenceInterval": "8-755/7303-8050",
+          "ReferenceRegion": "chr1:1300-1330",
+          "RepeatUnit": "CAG",
+          "VariantId": "L0",
+          "VariantSubtype": "Repeat",
+          "VariantType": "Repeat"
+        }
+      }
+    }
+  },
+  "SampleParameters": {
+    "SampleId": "reads",
+    "Sex": "Female"
+  }
+}

@@ -338,7 +338,6 @@ eh	thirdparty/graph-tools-master-f421f4c/src/graphcore/Graph.cpp	159	13	both	gra
 eh	thirdparty/graph-tools-master-f421f4c/src/graphcore/Graph.cpp	169	21	both	graph-tools: no caller in the linked program, test-only code, a compile-time switch, or a defensive check
 eh	thirdparty/graph-tools-master-f421f4c/src/graphcore/GraphReferenceMapping.cpp	40	24	true	graph-tools: no caller in the linked program, test-only code, a compile-time switch, or a defensive check
 eh	thirdparty/graph-tools-master-f421f4c/src/graphcore/GraphReferenceMapping.cpp	54	9	true	graph-tools: no caller in the linked program, test-only code, a compile-time switch, or a defensive check
-eh	thirdparty/graph-tools-master-f421f4c/src/graphcore/GraphReferenceMapping.cpp	61	9	true	graph-tools: no caller in the linked program, test-only code, a compile-time switch, or a defensive check
 eh	thirdparty/graph-tools-master-f421f4c/src/graphcore/GraphReferenceMapping.cpp	72	12	both	graph-tools: no caller in the linked program, test-only code, a compile-time switch, or a defensive check
 eh	thirdparty/graph-tools-master-f421f4c/src/graphcore/GraphReferenceMapping.cpp	72	40	both	graph-tools: no caller in the linked program, test-only code, a compile-time switch, or a defensive check
 eh	thirdparty/graph-tools-master-f421f4c/src/graphcore/GraphReferenceMapping.cpp	72	68	both	graph-tools: no caller in the linked program, test-only code, a compile-time switch, or a defensive check
@@ -349,7 +348,6 @@ eh	thirdparty/graph-tools-master-f421f4c/src/graphcore/GraphReferenceMapping.cpp
 eh	thirdparty/graph-tools-master-f421f4c/src/graphcore/GraphReferenceMapping.cpp	77	40	both	graph-tools: no caller in the linked program, test-only code, a compile-time switch, or a defensive check
 eh	thirdparty/graph-tools-master-f421f4c/src/graphcore/GraphReferenceMapping.cpp	77	66	both	graph-tools: no caller in the linked program, test-only code, a compile-time switch, or a defensive check
 eh	thirdparty/graph-tools-master-f421f4c/src/graphcore/GraphReferenceMapping.cpp	91	9	true	graph-tools: no caller in the linked program, test-only code, a compile-time switch, or a defensive check
-eh	thirdparty/graph-tools-master-f421f4c/src/graphcore/GraphReferenceMapping.cpp	99	9	true	graph-tools: no caller in the linked program, test-only code, a compile-time switch, or a defensive check
 eh	thirdparty/graph-tools-master-f421f4c/src/graphcore/Path.cpp	47	57	false	graph-tools: no caller in the linked program, test-only code, a compile-time switch, or a defensive check
 eh	thirdparty/graph-tools-master-f421f4c/src/graphcore/Path.cpp	48	9	true	graph-tools: no caller in the linked program, test-only code, a compile-time switch, or a defensive check
 eh	thirdparty/graph-tools-master-f421f4c/src/graphcore/Path.cpp	56	9	true	graph-tools: no caller in the linked program, test-only code, a compile-time switch, or a defensive check
@@ -580,7 +578,6 @@ nueh	core/TaskExecutor.cpp	51	14	false	not reachable in streaming mode: seeking-
 nueh	core/TaskExecutor.cpp	55	13	true	not reachable in streaming mode: seeking-only or test-only caller, compile-time switch, I/O failure, or a defensive check
 nueh	core/TaskExecutor.cpp	57	9	false	not reachable in streaming mode: seeking-only or test-only caller, compile-time switch, I/O failure, or a defensive check
 nueh	core/TaskExecutor.cpp	79	9	true	not reachable in streaming mode: seeking-only or test-only caller, compile-time switch, I/O failure, or a defensive check
-nueh	core/TaskExecutor.cpp	107	25	false	not reachable in streaming mode: seeking-only or test-only caller, compile-time switch, I/O failure, or a defensive check
 nueh	core/TaskExecutor.cpp	130	9	true	not reachable in streaming mode: seeking-only or test-only caller, compile-time switch, I/O failure, or a defensive check
 nueh	core/TaskExecutor.cpp	140	9	true	not reachable in streaming mode: seeking-only or test-only caller, compile-time switch, I/O failure, or a defensive check
 nueh	core/TaskExecutor.cpp	144	9	false	not reachable in streaming mode: seeking-only or test-only caller, compile-time switch, I/O failure, or a defensive check
@@ -708,7 +705,6 @@ nueh	io/BamletWriter.cpp	305	34	both	not reachable in streaming mode: seeking-on
 nueh	io/BamletWriter.cpp	306	25	true	not reachable in streaming mode: seeking-only or test-only caller, compile-time switch, I/O failure, or a defensive check
 nueh	io/BamletWriter.cpp	320	29	false	not reachable in streaming mode: seeking-only or test-only caller, compile-time switch, I/O failure, or a defensive check
 nueh	io/BamletWriter.cpp	340	43	false	not reachable in streaming mode: seeking-only or test-only caller, compile-time switch, I/O failure, or a defensive check
-nueh	io/BamletWriter.cpp	363	9	false	not reachable in streaming mode: seeking-only or test-only caller, compile-time switch, I/O failure, or a defensive check
 nueh	io/BamletWriter.cpp	387	25	false	not reachable in streaming mode: seeking-only or test-only caller, compile-time switch, I/O failure, or a defensive check
 nueh	io/BamletWriter.cpp	414	17	true	not reachable in streaming mode: seeking-only or test-only caller, compile-time switch, I/O failure, or a defensive check
 nueh	io/BamletWriter.cpp	418	13	true	not reachable in streaming mode: seeking-only or test-only caller, compile-time switch, I/O failure, or a defensive check
@@ -848,8 +844,6 @@ nueh	sample/HtsFileStreamer.cpp	55	9	true	not reachable in streaming mode: seeki
 nueh	sample/HtsFileStreamer.cpp	66	13	true	not reachable in streaming mode: seeking-only or test-only caller, compile-time switch, I/O failure, or a defensive check
 nueh	sample/HtsFileStreamer.cpp	80	9	true	not reachable in streaming mode: seeking-only or test-only caller, compile-time switch, I/O failure, or a defensive check
 nueh	sample/HtsFileStreamer.cpp	92	9	true	not reachable in streaming mode: seeking-only or test-only caller, compile-time switch, I/O failure, or a defensive check
-nueh	sample/HtsFileStreamer.cpp	213	13	both	not reachable in streaming mode: seeking-only or test-only caller, compile-time switch, I/O failure, or a defensive check
-nueh	sample/HtsFileStreamer.cpp	213	21	both	not reachable in streaming mode: seeking-only or test-only caller, compile-time switch, I/O failure, or a defensive check
 nueh	sample/HtsFileStreamer.cpp	245	46	true	not reachable in streaming mode: seeking-only or test-only caller, compile-time switch, I/O failure, or a defensive check
 nueh	sample/HtsFileStreamer.cpp	245	83	true	not reachable in streaming mode: seeking-only or test-only caller, compile-time switch, I/O failure, or a defensive check
 nueh	sample/HtsFileStreamer.cpp	274	12	false	not reachable in streaming mode: seeking-only or test-only caller, compile-time switch, I/O failure, or a defensive check
@@ -1149,8 +1143,6 @@ nueh	thirdparty/graph-tools-master-f421f4c/src/graphcore/Graph.cpp	282	17	both	g
 nueh	thirdparty/graph-tools-master-f421f4c/src/graphcore/Graph.cpp	287	27	both	graph-tools: no caller in the linked program, test-only code, a compile-time switch, or a defensive check
 nueh	thirdparty/graph-tools-master-f421f4c/src/graphcore/Graph.cpp	289	13	both	graph-tools: no caller in the linked program, test-only code, a compile-time switch, or a defensive check
 nueh	thirdparty/graph-tools-master-f421f4c/src/graphcore/Graph.cpp	301	21	both	graph-tools: no caller in the linked program, test-only code, a compile-time switch, or a defensive check
-nueh	thirdparty/graph-tools-master-f421f4c/src/graphcore/GraphReferenceMapping.cpp	54	9	both	graph-tools: no caller in the linked program, test-only code, a compile-time switch, or a defensive check
-nueh	thirdparty/graph-tools-master-f421f4c/src/graphcore/GraphReferenceMapping.cpp	61	9	both	graph-tools: no caller in the linked program, test-only code, a compile-time switch, or a defensive check
 nueh	thirdparty/graph-tools-master-f421f4c/src/graphcore/GraphReferenceMapping.cpp	72	12	both	graph-tools: no caller in the linked program, test-only code, a compile-time switch, or a defensive check
 nueh	thirdparty/graph-tools-master-f421f4c/src/graphcore/GraphReferenceMapping.cpp	72	40	both	graph-tools: no caller in the linked program, test-only code, a compile-time switch, or a defensive check
 nueh	thirdparty/graph-tools-master-f421f4c/src/graphcore/GraphReferenceMapping.cpp	72	68	both	graph-tools: no caller in the linked program, test-only code, a compile-time switch, or a defensive check

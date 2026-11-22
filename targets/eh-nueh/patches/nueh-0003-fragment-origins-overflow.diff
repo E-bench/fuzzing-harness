@@ -1,0 +1,14 @@
+--- a/ehunter/genotyping/FragLogliks.cpp
++++ b/ehunter/genotyping/FragLogliks.cpp
+@@ -54,7 +54,10 @@
+         return cached->second;
+ 
+     const int numPossibleStarts = alleleMotifCount * motifLen_ + fragLen_ + 1;
+-    const int numPossibleOrigins = numPossibleStarts * numPossibleStarts / 2;
++    // The square passes the range of int for alleles and fragments of 46,341 bases and more. Unsigned arithmetic
++    // gives the value that the overflowing signed product has on the tested compilers, without the undefined behaviour.
++    const int numPossibleOrigins
++        = static_cast<int>(static_cast<unsigned>(numPossibleStarts) * static_cast<unsigned>(numPossibleStarts)) / 2;
+     const double logPossibleOrigins = std::log(numPossibleOrigins);
+     std::vector<double> values;
+     values.reserve(numFrags());

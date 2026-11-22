@@ -1,0 +1,8 @@
+[
+ {
+  "LocusId": "L1",
+  "LocusStructure": "(CAG|CAT)",
+  "ReferenceRegion": "chr2:0-3",
+  "VariantType": "SmallVariant"
+ }
+]

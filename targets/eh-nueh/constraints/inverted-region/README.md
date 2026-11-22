@@ -26,6 +26,6 @@ Neither output is right for the locus: v5.0.0's genotype comes from the few read
 
 **In the generator.** `[adapter] inverted_regions = 0` in `target.toml` (the default) keeps the `locus` surface from
 writing such regions and makes the `catalog` surface reject inputs that contain one. With `1` they are generated
-again, tagged `inverted-region`, and classes with that tag are marked exempt.
+again, tagged `inverted-region`, and the adapter (`dfz_compare`) then only reports a program that dies from a signal.
 
 Run: `EH=... NUEH=... ./run.sh`.

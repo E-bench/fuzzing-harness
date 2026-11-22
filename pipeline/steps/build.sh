@@ -6,6 +6,9 @@
 #   refp     the same with the side's temporary patches (only for sides that have any)   -> bin/<side>_refp
 #   fuzz     edge-coverage builds (AFL++ compiler wrapper), patched                      -> bin/<side>_fuzz
 #   cov      source-based coverage builds (clang -fprofile-instr-generate -fcoverage-mapping), patched -> bin/<side>_cov
+#   san      builds that stop at memory errors and undefined behaviour (AddressSanitizer, UBSan, libstdc++
+#            assertions), patched: a program can read out of bounds and still print the same output, which a
+#            comparison of outputs never shows (steps/sanitize.sh)                       -> bin/<side>_san
 # Temporary patches ([side.<x>] patches in target.toml) hide known bugs so that fuzzing can go on behind them. Their
 # paths reach the target's build command in DFZ_PATCHES. The unpatched reference builds stay: a difference is only
 # reported against them.
@@ -14,7 +17,7 @@
 # A flavour is nothing but a compiler and flags handed to the target's own build command; the pipeline does not know
 # how a target is built. SIDES="a b" restricts the per-side steps.
 source "$(dirname "$0")/../env.sh"
-STEPS=${STEPS:-fetch deps ref refp fuzz cov harness data}
+STEPS=${STEPS:-fetch deps ref refp fuzz cov san harness data}
 SIDES=${SIDES:-a b}
 side_name() { [ "$1" = a ] && echo "$CFG_A_NAME" || echo "$CFG_B_NAME"; }
 side_patches() {  # absolute paths of the side's patches
@@ -58,9 +61,17 @@ fuzz)
 cov)
   # covshim.o: writes the profile when the program dies by a signal (harness/covshim.c)
   clang -O1 -c "$DFZ_ROOT/pipeline/harness/covshim.c" -o "$T/build/covshim.o"
-  export DFZ_CC=clang DFZ_CXX=clang++ DFZ_CFLAGS="-fprofile-instr-generate -fcoverage-mapping" \
-         DFZ_CXXFLAGS="-fprofile-instr-generate -fcoverage-mapping" DFZ_LDFLAGS="-fprofile-instr-generate $T/build/covshim.o"
+  # -fprofile-update=atomic: the programs are multi-threaded, and plain counters lose increments under contention;
+  # counts that llvm-cov derives from them (entries minus early returns) then come out wrong, even negative
+  export DFZ_CC=clang DFZ_CXX=clang++ DFZ_CFLAGS="-fprofile-instr-generate -fcoverage-mapping -fprofile-update=atomic" \
+         DFZ_CXXFLAGS="-fprofile-instr-generate -fcoverage-mapping -fprofile-update=atomic" DFZ_LDFLAGS="-fprofile-instr-generate $T/build/covshim.o"
   build_flavour cov ;;
+san)
+  # [build] san_flags of the target: checks to leave out, each with its reason in the target's README. A build stops
+  # at the first report, so a report that every run meets hides everything behind it.
+  export DFZ_CC=clang DFZ_CXX=clang++ DFZ_CFLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer -g $CFG_SAN_FLAGS" \
+         DFZ_CXXFLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer -g -D_GLIBCXX_ASSERTIONS $CFG_SAN_FLAGS" DFZ_LDFLAGS="-fsanitize=address,undefined"
+  build_flavour san ;;
 harness)
   H=$DFZ_ROOT/pipeline/harness; A=$TARGET_DIR/$CFG_ADAPTER
   FLAGS="-std=c++17 -O2 -I$H -I$TARGET_DIR"

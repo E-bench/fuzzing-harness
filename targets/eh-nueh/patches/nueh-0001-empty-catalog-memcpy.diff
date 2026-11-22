@@ -1,0 +1,11 @@
+--- a/ehunter/io/PreparedCatalog.cpp
++++ b/ehunter/io/PreparedCatalog.cpp
+@@ -348,7 +348,7 @@
+         std::memcpy(storage.get() + bases[block], part.bytes.data(), part.bytes.size());
+         return true;
+     }, [](bool) {});
+-    std::memcpy(storage.get() + lociSlice.offset, loci.data(), count * sizeof(MappedLocus));
++    if (count) std::memcpy(storage.get() + lociSlice.offset, loci.data(), count * sizeof(MappedLocus));
+     const graphtools::MappedBytes blob(storage.get(), size);
+     const auto ids = locusIdTable(loci, blob);
+     std::memcpy(storage.get() + idsSlice.offset, ids.data(), buckets * sizeof(uint64_t));
