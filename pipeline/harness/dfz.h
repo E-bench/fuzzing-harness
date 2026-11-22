@@ -605,6 +605,31 @@ inline vector<string> commandLine(const Case &c, int side) {
     }
     return t;
 }
+// What a sanitizer or the C++ library's assertions reported in the log of a program that died: kind and place,
+// without directories, addresses and the numbers of the message ("" when the log has no such report, as on builds
+// without sanitizers; a plain abort is not a report).
+inline string deathReport(const string &logFile) {
+    string o;
+    if (!readFile(logFile, o)) return "";
+    static const std::regex assertion("(\\S+):(\\d+): .*Assertion [`'](.*)' failed"), ubsan("(\\S+):(\\d+):\\d+: runtime error: (.*)"),
+        asanKind("ERROR: AddressSanitizer: ([\\w-]+)"), asanPlace("SUMMARY: AddressSanitizer: \\S+ (\\S+?):(\\d+)"),
+        address("0x[0-9a-fA-F]+"), number("-?\\d+");
+    auto base = [](const string &path) { size_t s = path.rfind('/'); return s == string::npos ? path : path.substr(s + 1); };
+    auto plain = [&](string s) {
+        s = std::regex_replace(std::regex_replace(s, address, "ADDR"), number, "N");
+        for (char &ch : s) if (ch == ' ' || ch == '\t') ch = '_';
+        return s.substr(0, 100);
+    };
+    string kind;
+    for (const string &l : lines(o)) {
+        std::smatch m;
+        if (kind.empty() && std::regex_search(l, m, assertion)) return "assertion_" + base(m[1]) + ":" + m[2].str() + "_" + plain(m[3]);
+        if (kind.empty() && std::regex_search(l, m, ubsan)) return "ubsan_" + base(m[1]) + ":" + m[2].str() + "_" + plain(m[3]);
+        if (kind.empty() && std::regex_search(l, m, asanKind)) { kind = m[1]; if (kind == "ABRT") return ""; continue; }
+        if (!kind.empty() && std::regex_search(l, m, asanPlace)) return "asan_" + kind + "_" + base(m[1]) + ":" + m[2].str();
+    }
+    return kind.empty() ? "" : "asan_" + kind;
+}
 // Prepare an empty case directory; the adapter's decode() then fills c.in.
 inline void newCase(Case &c) {
     const Config &C = cfg();
@@ -647,6 +672,19 @@ inline void runCase(const Case &c, Outcome &o) {
         readFile(o.b.log, lb);
         auto tail = [](const string &s) { vector<string> l = lines(s); string r; for (size_t i = l.size() > 3 ? l.size() - 3 : 0; i < l.size(); i++) r += "    " + clip(l[i]) + "\n"; return r; };
         f.detail = C.nameA + ": " + o.a.cls + (o.a.cls == "err" ? " (exit " + std::to_string(o.a.code) + ")" : "") + "\n" + tail(la) + C.nameB + ": " + o.b.cls + (o.b.cls == "err" ? " (exit " + std::to_string(o.b.code) + ")" : "") + "\n" + tail(lb);
+        o.findings.push_back(f);
+    }
+    // A program that dies with a report of a sanitizer or of a failed assertion is a finding by itself, also when the
+    // other program ends the same way: a memory error or undefined behaviour is found where it happens, not only
+    // where it changes an output.
+    for (int side = 0; side < 2; side++) {
+        const Run &r = side ? o.b : o.a;
+        if (r.cls.compare(0, 3, "sig") != 0) continue;
+        string report = deathReport(r.log);
+        if (report.empty()) continue;
+        Finding f;
+        f.atoms = "report_" + (side ? C.nameB : C.nameA) + ":[" + report + "]";
+        f.detail = (side ? C.nameB : C.nameA) + ": " + r.cls + ", " + report + "\n";
         o.findings.push_back(f);
     }
     // outputs are compared when both runs succeeded (with compare_on_error: also when both exited with an error;

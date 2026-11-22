@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # One fuzzer on one surface on one machine:
-#   DFZ_TARGET=<target> ENGINE=<engine> SURFACE=<surface> TAG=<campaign> DUR=<seconds> [NCPU=<n>] pipeline/steps/campaign.sh
+#   DFZ_TARGET=<target> ENGINE=<engine> SURFACE=<surface> TAG=<campaign> DUR=<seconds> [NCPU=<n>] [SAN=1] pipeline/steps/campaign.sh
 # ENGINE is a file name in pipeline/engines; SURFACE one of the target's [surface.*] tables.
 # The fuzzer works in a node-local temporary directory; the results go to work/<target>/runs/<TAG>/<engine>.<surface>.<id>/:
 #   meta.txt     engine, surface, host, CPUs, duration, start time, map sizes
@@ -24,18 +24,25 @@ trap 'rm -rf "$W" "$SHM"' EXIT
 # Stopping: pkill reaches the fuzzers, the harnesses and the programs under them alike, so a harness can see one of
 # its two programs killed. The stop file tells it to store nothing from then on (DFZ_STOP_FILE, dfz.h).
 trap 'touch "$W/stop"; pkill -u "$USER" -f "$W/"' TERM INT   # the loop below then ends and the results are archived
-A=$T/bin/${CFG_A_NAME}_fuzz; B=$T/bin/${CFG_B_NAME}_fuzz; H=$T/bin/harness_$ENGINE_HARNESS
+# SAN=1 (default: [run] sanitizers of the target): the fuzzsan builds, which carry sanitizers besides the edge coverage
+SAN=${SAN:-$CFG_FUZZ_SANITIZERS}; FL=fuzz; [ "$SAN" = 1 ] && FL=fuzzsan
+A=$T/bin/${CFG_A_NAME}_$FL; B=$T/bin/${CFG_B_NAME}_$FL; H=$T/bin/harness_$ENGINE_HARNESS
+[ -x "$A" ] && [ -x "$B" ] || { echo "no $FL builds: ./dfz build $DFZ_TARGET STEPS=\"$FL harness\""; exit 2; }
 cp "$A" "$B" "$H" "$W/bin/"; cp -r "$T/seeds/$SURFACE" "$W/seeds"; cp -r "$T/data" "$W/data"
 for try in 1 2 3 4 5; do cp "$DFZ_CFG" "$W/harness.cfg" && break; sleep 2; done   # the configuration this run uses
 [ -s "$W/harness.cfg" ] || { echo "cannot copy $DFZ_CFG"; exit 2; }
 export DFZ_CFG=$W/harness.cfg; cp "$W/harness.cfg" "$RUN/harness.cfg"
-AMAP=$(AFL_DUMP_MAP_SIZE=1 "$A"); BMAP=$(AFL_DUMP_MAP_SIZE=1 "$B"); AMAP=$(( (AMAP + 63) / 64 * 64 )); BMAP=$(( (BMAP + 63) / 64 * 64 ))
+AMAP=$(ASAN_OPTIONS=detect_leaks=0 AFL_DUMP_MAP_SIZE=1 "$A"); BMAP=$(ASAN_OPTIONS=detect_leaks=0 AFL_DUMP_MAP_SIZE=1 "$B"); AMAP=$(( (AMAP + 63) / 64 * 64 )); BMAP=$(( (BMAP + 63) / 64 * 64 ))
 export DFZ_GUARDS=$(cat "$T/bin/guards" 2>/dev/null || echo 524288)
 export DFZ_SURFACE=$SURFACE DFZ_A=$W/bin/$(basename "$A") DFZ_B=$W/bin/$(basename "$B") DFZ_A_MAP=$AMAP DFZ_B_MAP=$BMAP
 export DFZ_WORK=$SHM DFZ_FIND=$W/find DFZ_DATA=$W/data DFZ_STOP_FILE=$W/stop
+[ "$SAN" = 1 ] && dfz_san_env   # the sanitizers' options, and the limits scaled by what such a build costs
+# the fuzzer's own limit on one execution of the harness: both programs and an extra run at their time limit, and more
+export ENGINE_TIMEOUT_S=$(( ${DFZ_TIMEOUT_MS:-$CFG_TIMEOUT_MS} * 3 / 1000 + 30 )); [ "$ENGINE_TIMEOUT_S" -lt 300 ] && ENGINE_TIMEOUT_S=300
 T0=$(date +%s)
-printf 'engine=%s\nsurface=%s\ntag=%s\ndur=%s\nhost=%s\ncpus=%s\nstart=%s\na_map=%s\nb_map=%s\nguards=%s\nseeds=%s\n' \
-  "$ENGINE" "$SURFACE" "$TAG" "$DUR" "$(hostname -s)" "$N" "$T0" "$AMAP" "$BMAP" "$DFZ_GUARDS" "$(ls "$W/seeds" | wc -l)" | tee "$RUN/meta.txt"
+printf 'engine=%s\nsurface=%s\ntag=%s\ndur=%s\nhost=%s\ncpus=%s\nstart=%s\na_map=%s\nb_map=%s\nguards=%s\nseeds=%s\nsanitizers=%s\ntimeout_ms=%s\nmemory_mb=%s\n' \
+  "$ENGINE" "$SURFACE" "$TAG" "$DUR" "$(hostname -s)" "$N" "$T0" "$AMAP" "$BMAP" "$DFZ_GUARDS" "$(ls "$W/seeds" | wc -l)" \
+  "$SAN" "${DFZ_TIMEOUT_MS:-$CFG_TIMEOUT_MS}" "${DFZ_MEMORY_MB:-$CFG_MEMORY_MB}" | tee "$RUN/meta.txt"
 printf 'elapsed\texecs\tcorpus\tsignatures\n' > "$RUN/stats.tsv"
 collect() {
   local now e

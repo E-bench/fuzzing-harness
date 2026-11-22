@@ -11,7 +11,8 @@ their outputs differ and how much of both programs the inputs reached.
   same footing: differences found, time to find them, coverage of both programs.
 - **Not only outputs are compared.** A program can read out of bounds and still print the right answer. Both
   programs are also built with AddressSanitizer, UndefinedBehaviorSanitizer and the C++ library's assertions, and
-  every input of a campaign is replayed on these builds.
+  every input of a campaign is replayed on these builds. A campaign can also fuzz on such builds directly (`SAN=1`),
+  so that every executed input is checked and not only the kept ones.
 - **Coverage is reported.** Both programs are also built with source-based coverage; every corpus is replayed on them
   and the report lists functions, lines and branches reached, per program, directory, file, fuzzer and over time, and
   what was never reached.
@@ -67,8 +68,9 @@ work/                    everything generated (git-ignored): fuzzers, sources, b
 
 ```bash
 ./dfz tools                                   # fetch and build the fuzzers into work/tools
-./dfz build eh-nueh                           # fetch, deps, ref, refp, fuzz, cov, san, harness, data
+./dfz build eh-nueh                           # fetch, deps, ref, refp, fuzz, fuzzsan, cov, san, harness, data
 ./dfz submit eh-nueh TAG=main DUR=3600        # Slurm: every fuzzer x every surface, sized to the CPU budget
+                                              # SAN=1: on the builds with sanitizers (default: [run] sanitizers of the target)
 ./dfz post eh-nueh TAG=main WAIT=1            # recheck of the differences, coverage, sanitizers, report, check
 ./dfz coverage eh-nueh TAG=seeds              # coverage of the seed corpora alone (minutes; the generator loop)
 ./dfz sanitize eh-nueh TAG=main               # the same inputs on sanitizer builds: memory errors, undefined behaviour

@@ -66,7 +66,8 @@ if rck:
           f"{rck['flaky']:,} differ only in some replays, {rck.get('timeout_deferred', 0) + rck.get('memory_deferred', 0):,} are put off (only the original passed a limit; {rck.get('memory', 0):,} memory limits, "
           f"{rck.get('timeout', 0):,} time limits in all, {rck.get('timeout_long', 0):,} of them also with {rck.get('long_limit_ms', 0) // 1000} s) and {rck['gone']:,} no longer differ"
           + (f" ({rck['gone_timeout_under_load']:,} of them a time limit that the rewrite passed while other replays ran and not alone)" if rck.get("gone_timeout_under_load") else "") + "."
-          + (f" Of those to account for, {rck['fuzz_only']:,} differ only on the instrumented builds (the difference depends on the build)." if rck.get("fuzz_only") else "")]
+          + (f" Of those to account for, {rck['fuzz_only']:,} differ only on the instrumented builds (the difference depends on the build)." if rck.get("fuzz_only") else "")
+          + (f" {rck['report']:,} are a program's death with a report of a sanitizer or of a failed assertion." if rck.get("report") else "")]
 L.append("")
 
 L += ["## Fuzzers", "", "| Fuzzer | Runs | CPU hours | Test cases | per CPU second | Corpus | Signatures stored |" + (" Open differences | Only this fuzzer | Median seconds to find |" if rck else "") +

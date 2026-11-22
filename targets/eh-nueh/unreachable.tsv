@@ -992,7 +992,6 @@ nueh	thirdparty/graph-tools-master-f421f4c/src/graphalign/GraphAlignmentOperatio
 nueh	thirdparty/graph-tools-master-f421f4c/src/graphalign/GraphAlignmentOperations.cpp	326	35	both	graph-tools: no caller in the linked program, test-only code, a compile-time switch, or a defensive check
 nueh	thirdparty/graph-tools-master-f421f4c/src/graphalign/KmerIndex.cpp	128	9	true	graph-tools: no caller in the linked program, test-only code, a compile-time switch, or a defensive check
 nueh	thirdparty/graph-tools-master-f421f4c/src/graphalign/KmerIndex.cpp	281	14	both	graph-tools: no caller in the linked program, test-only code, a compile-time switch, or a defensive check
-nueh	thirdparty/graph-tools-master-f421f4c/src/graphalign/KmerIndex.cpp	364	17	true	graph-tools: no caller in the linked program, test-only code, a compile-time switch, or a defensive check
 nueh	thirdparty/graph-tools-master-f421f4c/src/graphalign/KmerIndex.cpp	367	21	both	graph-tools: no caller in the linked program, test-only code, a compile-time switch, or a defensive check
 nueh	thirdparty/graph-tools-master-f421f4c/src/graphalign/KmerIndex.cpp	663	13	true	graph-tools: no caller in the linked program, test-only code, a compile-time switch, or a defensive check
 nueh	thirdparty/graph-tools-master-f421f4c/src/graphalign/KmerIndex.cpp	728	9	true	graph-tools: no caller in the linked program, test-only code, a compile-time switch, or a defensive check

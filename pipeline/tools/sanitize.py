@@ -45,11 +45,11 @@ SIDES = [cfg["side"]["a"]["name"], cfg["side"]["b"]["name"]]
 runs_dir = os.path.join(a.work, "runs", a.tag)
 out = os.path.join(a.work, "sanitize", a.tag)
 scratch = a.scratch or os.path.join(os.environ.get("TMPDIR", "/tmp"), f"dfz_san_{os.getpid()}")
-# stop at the first error with a stack trace; leaks are not reported (a program that exits does not free everything)
-CHILD_ENV = ("ASAN_OPTIONS=abort_on_error=1:detect_leaks=0:handle_abort=1:symbolize=1;"
-             "UBSAN_OPTIONS=halt_on_error=1:abort_on_error=1:print_stacktrace=1")
-SLOWER = 5   # the time limit is this many times the configured one
-LARGER = 4   # and the memory limit this many times (the sanitizers' own memory)
+# stop at the first error with a stack trace, plus the target's own sanitizer options (env.sh puts both together)
+CHILD_ENV = os.environ.get("DFZ_SAN_CHILD_ENV") or ("ASAN_OPTIONS=abort_on_error=1:handle_abort=1:symbolize=1;"
+                                                    "UBSAN_OPTIONS=halt_on_error=1:abort_on_error=1:print_stacktrace=1")
+SLOWER = int(cfg["run"].get("san_slower", 5))   # the time limit is this many times the configured one
+LARGER = int(cfg["run"].get("san_larger", 4))   # and the memory limit this many times (the sanitizers' own memory)
 # As many replays at once as the job's memory allows when each of them reaches the memory limit of a program run:
 # otherwise the machine ends processes of the job, and their results look like behaviour of the programs.
 REPLAYS = a.jobs
@@ -147,7 +147,7 @@ def replay_phase():
         listings = list(ex.map(lambda x: archives.listing(x[1], also=("sig.txt", "FOUND", "full")), archived))
     for (surface, tgz), listed in zip(archived, listings):
         for name, _, h in listed:
-            inputs[surface].setdefault(h, (tgz, name))
+            inputs[surface].setdefault(h.hex(), (tgz, name))   # the same key as the seeds: the digest as text
     total = sum(len(v) for v in inputs.values())
     # chunks small enough that every CPU of every shard has work: a few slow inputs must not sit in one chunk
     chunk = max(1, min(a.chunk, total // (4 * NSHARD * REPLAYS) + 1))

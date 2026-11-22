@@ -63,6 +63,21 @@ def locus_seeds():
     for e in range(1, 16):
         s[f"ext{e:02d}"] = case(hdr={"EXT": e}, loci=[{"HAP2": 3}])
     s["nobamlet"] = case(hdr={"OPTIONS": 0x40})
+    # a literal of 2,100 bases next to a repeat (templates LR and RL: graphs of four nodes with one long node)
+    s["long_literal_LR"] = case(loci=[{"TEMPLATE": 10, "SMALL": 0xF0, "HAP2": 3}])
+    s["long_literal_RL"] = case(loci=[{"TEMPLATE": 11, "SMALL": 0xF0, "HAP2": 3}])
+    s["long_literal_RLr_path"] = case(hdr={"OPTIONS": 2}, loci=[{"TEMPLATE": 2, "SMALL": 0xF0, "HAP2": 3}])
+    # flanks of 10,000 bases with the extension to match: flank nodes beyond the range of 16-bit alignment scores
+    for rl in (0, 6, 13):
+        s[f"long_flanks_read{rl:02d}"] = case(hdr={"EXT": 12, "READLEN": rl, "ERRORS": 2}, loci=[{"PLACE": 10 << 2, "FIELDS": 10 << 4, "HAP2": 3}])
+    s["long_flanks_threads4"] = case(hdr={"EXT": 12, "OPTIONS": 2 << 2}, loci=[{"PLACE": 10 << 2, "FIELDS": 10 << 4, "HAP2": 0x80 | 17}])
+    # all first mates before their partners in a deep sample: the reader's store of waiting mates passes its budget
+    s["first_mates_first_deep"] = case(hdr={"READLEN": 1 | 0x40, "DEPTH": 14 | 0x30}, loci=[{"HAP2": 3}])
+    s["first_mates_first_deep_t2"] = case(hdr={"READLEN": 0x40, "DEPTH": 14 | 0x30, "OPTIONS": 1 << 2}, loci=[{"HAP2": 3}])
+    # in-repeat pairs anchored in the flank with reads shorter than an off-target region
+    for rl in (7, 8):
+        s[f"rare_irr_anchor_read{rl}"] = case(hdr={"READLEN": rl}, loci=[{"TYPE": 1 | (3 << 4), "HAP2": 0x80 | 27, "IRR": 1 | 0x80}])
+        s[f"rare_irr_anchor_read{rl}_b"] = case(hdr={"READLEN": rl}, loci=[{"TYPE": 1 | (1 << 4), "HAP2": 0x80 | 27, "IRR": 3 | 0x80}])
     s["loglevel"] = case(hdr={"OPTIONS": 0x30})
     for r in range(1, 16):
         s[f"readlen{r:02d}"] = case(hdr={"READLEN": r, "FRAG": r}, loci=[{"HAP2": 0x80 | 15}])

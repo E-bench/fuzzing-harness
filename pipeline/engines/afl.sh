@@ -19,7 +19,7 @@ engine_run() {  # <harness> <seeds> <out> <ncpu> <seconds> <max_len> <min_len> <
     [ $((i % 4)) = 3 ] && extra="$extra -L 0"
     [ -n "$dict" ] && extra="$extra -x $dict"
     [ "$minlen" -gt 0 ] && extra="$extra -g $minlen"
-    ( "$AFL_ROOT/afl-fuzz" -i "$seeds" -o "$out/afl" $role -t 120000 -m none -G "$maxlen" -V "$dur" $extra -- "$h" > "$out/log_$i.txt" 2>&1; echo "instance $i ended rc=$?" ) &
+    ( "$AFL_ROOT/afl-fuzz" -i "$seeds" -o "$out/afl" $role -t $(( ${ENGINE_TIMEOUT_S:-300} * 1000 )) -m none -G "$maxlen" -V "$dur" $extra -- "$h" > "$out/log_$i.txt" 2>&1; echo "instance $i ended rc=$?" ) &
     sleep 1
   done
 }

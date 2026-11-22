@@ -14,8 +14,11 @@ still differs with the known bugs patched away.
       differs      a difference in the same outputs every time (the signature shown is the replayed one)
       flaky        only in some replays
       fuzz-only    not on the reference builds every time, but every time on the instrumented builds the fuzzers ran
-                   (bin/<side>_fuzz): the difference depends on the build (compiler, flags), which is a finding to
-                   look at, not noise
+                   (bin/<side>_fuzz, or _fuzzsan for a campaign run with sanitizers): the difference depends on the
+                   build (compiler, flags), which is a finding to look at, not noise
+      report       the same, where the signature is a program's death with a report of a sanitizer or of a failed
+                   assertion (atoms `report_<side>:[...]`): a memory error or undefined behaviour in that program,
+                   whether or not the other program has it too. To account for, like a difference.
       timeout:<side>       the difference is that this program passed the time limit and the other did not. A time
                    limit is the harness's doing, so these are a class of their own, looked at after the differences
                    in output; they are not dropped. (A program that ends in an error early while the other is still
@@ -64,7 +67,8 @@ cfg = tomllib.load(open(a.toml, "rb"))
 # As many replays at once as the job's memory allows when each of them reaches the memory limit of a program run:
 # otherwise the machine ends processes of the job, and their results look like behaviour of the programs.
 REPLAYS = a.jobs
-_limit, _job = 1 * int(cfg["run"].get("memory_mb", 0)), int(os.environ.get("SLURM_MEM_PER_NODE") or 0)
+SAN_SLOWER, SAN_LARGER = int(cfg["run"].get("san_slower", 5)), int(cfg["run"].get("san_larger", 4))
+_limit, _job = (SAN_LARGER if cfg["run"].get("sanitizers") else 1) * int(cfg["run"].get("memory_mb", 0)), int(os.environ.get("SLURM_MEM_PER_NODE") or 0)
 if _limit and _job and _job // _limit < a.jobs:
     REPLAYS = max(1, _job // _limit)
     print(f"{REPLAYS} replays at once instead of {a.jobs}: the job has {_job} MB and a program run may use {_limit} MB", flush=True)
@@ -99,11 +103,22 @@ def replay_phase():
     shutil.copytree(os.path.join(a.work, "data"), os.path.join(local, "data"), symlinks=True, ignore=shutil.ignore_patterns(".*"))
     env0 = dict(os.environ, DFZ_A=os.path.join(local, A), DFZ_B=os.path.join(local, B), DFZ_DATA=os.path.join(local, "data"),
                 DFZ_CFG=os.path.join(local, "harness.cfg"))
-    # the instrumented builds, for differences that do not show on the reference builds
-    fuzz = all(os.path.exists(os.path.join(a.work, "bin", s + "_fuzz")) for s in (A, B))
+    # the instrumented builds the fuzzers ran, for what does not show on the reference builds: those with sanitizers
+    # (fuzzsan) when a run of the campaign used them (meta.txt), with their options and scaled limits
+    def meta(run):
+        p = os.path.join(runs, run, "meta.txt")
+        return dict(l.strip().split("=", 1) for l in open(p) if "=" in l) if os.path.isfile(p) else {}
+    sanitized = any(meta(run).get("sanitizers") == "1" for run in os.listdir(runs))
+    flavour = "_fuzzsan" if sanitized else "_fuzz"
+    fuzz = all(os.path.exists(os.path.join(a.work, "bin", s + flavour)) for s in (A, B))
     if fuzz:
         for s in (A, B):
-            shutil.copy2(os.path.join(a.work, "bin", s + "_fuzz"), os.path.join(local, s + "_fuzz"))
+            shutil.copy2(os.path.join(a.work, "bin", s + flavour), os.path.join(local, s + "_fuzz"))
+    fuzz_env = {}
+    if sanitized:
+        fuzz_env = {"DFZ_CHILD_ENV": os.environ.get("DFZ_SAN_CHILD_ENV", ""), "DFZ_TIMEOUT_MS": str(SAN_SLOWER * int(cfg["run"].get("timeout_ms", 20000)))}
+        if int(cfg["run"].get("memory_mb", 0)):
+            fuzz_env["DFZ_MEMORY_MB"] = str(SAN_LARGER * int(cfg["run"]["memory_mb"]))
     for k in ("DFZ_A_MAP", "DFZ_B_MAP", "DFZ_FIND", "DFZ_NOFEEDBACK"):
         env0.pop(k, None)
     slots = list(range(REPLAYS))
@@ -183,10 +198,12 @@ def replay_phase():
             same, inp, now = best
             status = "differs" if same == a.repeat else "flaky" if same else "gone"
             if status != "differs" and fuzz and s["inputs"]:
-                fenv = dict(env, DFZ_A=os.path.join(local, A + "_fuzz"), DFZ_B=os.path.join(local, B + "_fuzz"))
+                fenv = dict(env, DFZ_A=os.path.join(local, A + "_fuzz"), DFZ_B=os.path.join(local, B + "_fuzz"), **fuzz_env)
                 fsame, fnow = replays(inp or s["inputs"][0], fenv)
                 if fsame == a.repeat:
                     status, inp, now, env = "fuzz-only", inp or s["inputs"][0], fnow, fenv
+                    if all(k.startswith("report_") for k in kind(split_sig(fnow)[2])):
+                        status = "report"   # a sanitizer's or an assertion's report, not a difference between the programs
             took = ""
             if status != "gone" and a.slow_factor > 1 and TIMEOUT.search(now or sig):
                 # a passed time limit is the harness's doing, not behaviour of a program: once more with a long limit
@@ -215,7 +232,7 @@ def replay_phase():
         inp = os.path.join(shard_dir, "inputs", s["input"])
         env = dict(env0, DFZ_SURFACE=s["surface"], DFZ_WORK=os.path.join(scratch, "work", "alone"))
         if s["fuzz_builds"]:
-            env.update(DFZ_A=os.path.join(local, A + "_fuzz"), DFZ_B=os.path.join(local, B + "_fuzz"))
+            env.update(DFZ_A=os.path.join(local, A + "_fuzz"), DFZ_B=os.path.join(local, B + "_fuzz"), **fuzz_env)
         got = differences(inp, env)   # at the configured limit
         if not got:
             s["status"], s["under_load"] = "gone", True
@@ -261,7 +278,7 @@ def merge_phase():
             st = s["status"]
             # the original alone passing a limit is put off; the rewrite passing it is to account for
             deferred = st.startswith(("timeout", "memory")) and st.split(":", 1)[1] == A
-            order = (8 if st.startswith("timeout-long") else 9) if deferred else {"differs": 0, "fuzz-only": 1, "flaky": 5}.get(st, 2 if st.startswith("timeout-long") else 3)
+            order = (8 if st.startswith("timeout-long") else 9) if deferred else {"differs": 0, "fuzz-only": 1, "flaky": 5}.get(st, 1 if st == "report" else 2 if st.startswith("timeout-long") else 3)
             rows.append((order, now, st, " ".join(f"{e}:{t}" for e, t in sorted(s["engines"].items())), s["input"], s["surface"], s.get("took", "")))
             if st.startswith("timeout"):
                 count["timeout"] += 1
@@ -277,14 +294,15 @@ def merge_phase():
         f.write("status\tsurface\tsignature\tfuzzers(first_seconds)\tinput\tat_long_limit\n")
         for _, now, status, engines, inp, surface, took in rows:
             f.write("\t".join([status, surface, now, engines, "inputs/" + inp, took]) + "\n")
-    summary = {"stored": sum(count[k] for k in ("differs", "fuzz-only", "flaky", "timeout", "memory", "gone")), "differs": count["differs"], "fuzz_only": count["fuzz-only"],
+    summary = {"stored": sum(count[k] for k in ("differs", "fuzz-only", "report", "flaky", "timeout", "memory", "gone")), "differs": count["differs"], "fuzz_only": count["fuzz-only"],
+               "report": count["report"],
                "flaky": count["flaky"], "timeout": count["timeout"], "timeout_long": count["timeout long"], "timeout_deferred": count["timeout deferred"],
                "memory": count["memory"], "memory_deferred": count["memory deferred"],
                "gone": count["gone"], "gone_timeout_under_load": count["under load"], "long_limit_ms": LONG_MS, "to_account_for": count["to account for"], "patched": PATCHED}
     json.dump(summary, open(os.path.join(out, "summary.json"), "w"), indent=1)
     shutil.rmtree(sd, ignore_errors=True)
     print(f"stored {summary['stored']}: {summary['to_account_for']} to account for, {summary['timeout_deferred'] + summary['memory_deferred']} put off (only the original passed a limit), "
-          f"flaky {summary['flaky']}, gone {summary['gone']} ({summary['gone_timeout_under_load']} of them a time limit the rewrite passed only while other replays ran); of all: differ {summary['differs']}, only on the instrumented builds {summary['fuzz_only']}, "
+          f"flaky {summary['flaky']}, gone {summary['gone']} ({summary['gone_timeout_under_load']} of them a time limit the rewrite passed only while other replays ran); of all: differ {summary['differs']}, only on the instrumented builds {summary['fuzz_only']}, sanitizer or assertion reports {summary['report']}, "
           f"timeouts {summary['timeout']} ({summary['timeout_long']} also at {LONG_MS // 1000} s), memory limit {summary['memory']}" + (f"; patched builds of {', '.join(PATCHED)}" if PATCHED else "") + f" -> {out}/remaining.tsv")
 
 if a.phase == "all":

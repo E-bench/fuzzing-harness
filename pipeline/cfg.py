@@ -49,6 +49,11 @@ def shell(c):
     out["CFG_COV_IGNORE"] = cov.get("ignore", "")
     out["CFG_TIMEOUT_MS"] = str(c["run"].get("timeout_ms", 20000))
     out["CFG_MEMORY_MB"] = str(c["run"].get("memory_mb", 0))
+    out["CFG_FUZZ_SANITIZERS"] = "1" if c["run"].get("sanitizers", False) else "0"   # campaigns fuzz on the fuzzsan builds
+    out["CFG_ASAN_OPTIONS"] = c["run"].get("asan_options", "")     # runtime options of the target, e.g. checks it leaves out
+    out["CFG_UBSAN_OPTIONS"] = c["run"].get("ubsan_options", "")
+    out["CFG_SAN_SLOWER"] = str(c["run"].get("san_slower", 5))
+    out["CFG_SAN_LARGER"] = str(c["run"].get("san_larger", 4))
     return "\n".join(f"export {k}={shlex.quote(v)}" for k, v in out.items())
 
 

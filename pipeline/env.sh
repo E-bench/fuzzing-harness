@@ -41,6 +41,15 @@ if [ -n "${DFZ_TARGET:-}" ]; then
   rm -f "$_cfg"
   export DFZ_CFG=$T/harness.cfg
 fi
+# A run on a build with sanitizers: stop at the first error with a stack trace, and limits scaled by what such a build
+# costs ([run] san_slower, san_larger). Which checks are left out is the target's choice, not made here: at compile
+# time [build] san_flags, at run time [run] asan_options and ubsan_options.
+export DFZ_SAN_CHILD_ENV="ASAN_OPTIONS=abort_on_error=1:handle_abort=1:symbolize=1${CFG_ASAN_OPTIONS:+:$CFG_ASAN_OPTIONS};UBSAN_OPTIONS=halt_on_error=1:abort_on_error=1:print_stacktrace=1${CFG_UBSAN_OPTIONS:+:$CFG_UBSAN_OPTIONS}"
+dfz_san_env() {
+  export DFZ_CHILD_ENV=$DFZ_SAN_CHILD_ENV DFZ_TIMEOUT_MS=${DFZ_TIMEOUT_MS:-$(( CFG_TIMEOUT_MS * CFG_SAN_SLOWER ))}
+  [ "${CFG_MEMORY_MB:-0}" -gt 0 ] && export DFZ_MEMORY_MB=${DFZ_MEMORY_MB:-$(( CFG_MEMORY_MB * CFG_SAN_LARGER ))}
+  return 0
+}
 # expand the placeholders of a target.toml command: {target} {side} {src} {deps} {build} {out} {data} {seeds} {jobs}
 dfz_expand() {  # dfz_expand <template> [side] [flavour]
   local s=$1 side=${2:-} fl=${3:-}

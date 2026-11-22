@@ -163,6 +163,13 @@ struct Sim {
         for (size_t i = 0; i < contigs.size(); i++) if (contigs[i].name == name) return i;
         return -1;
     }
+    // The longest flank (code 10, 2,000 bases) is as long as the region extension when that is longer (10,000): the
+    // only way to a flank node of several thousand bases, where the aligners' 16-bit scores no longer hold a
+    // boundary. With the shorter flanks such an extension stays what it was, a region outside the contig.
+    int flankLength(int code) const {
+        int length = LEFTFLANK[code], extension = EXTLEN[H(H_EXT) & 15];
+        return code == 10 && extension > length ? extension : length;
+    }
     // ---- genome and catalog
     void buildGenome() {
         int nloci = 1 + (H(H_LAYOUT) & 3);
@@ -184,7 +191,7 @@ struct Sim {
             L.contigIndex = ci;
             Contig &C = contigs[ci];
             // left flank (unless the contig already has sequence: then the spacing to the previous locus)
-            int left = C.seq.empty() ? LEFTFLANK[(l[L_PLACE] >> 2) & 15] : spacing;
+            int left = C.seq.empty() ? flankLength((l[L_PLACE] >> 2) & 15) : spacing;
             C.seq += randomSeq(1000 + ci * 131 + C.seq.size(), left);
             // features
             // (templates added after the first 24 sit at the top of the byte's range, so that older inputs keep their meaning)
@@ -205,7 +212,7 @@ struct Sim {
                 t = longStructure.c_str();
             }
             Rng rr(7 + k);
-            int degenerateLiterals = 0;
+            int degenerateLiterals = 0, longLiterals = 0;
             for (const char *p = t; *p; p++) {
                 Feature f;
                 f.kind = *p == 'r' || *p == 'p' ? (*p == 'r' ? 'R' : 'P') : *p == 'Q' ? 'R' : *p;
@@ -223,6 +230,9 @@ struct Sim {
                     break;
                 case 'L':
                     f.a = LITERALS[(l[L_SMALL] >> 4) % NLIT];
+                    // Code 15: the first literal of the structure has 2,100 bases. A graph node of more than 2,048
+                    // positions does not fit the rewrite's compact k-mer index, which then takes its other layout.
+                    if ((l[L_SMALL] >> 4) == 15 && !longLiterals++) f.a = randomSeq(4242, 2100);
                     // At most 3 literals of a structure are the degenerate base; further ones are "A". Both programs
                     // need memory exponential in their number (README.md, limits).
                     if (f.a == "N" && ++degenerateLiterals > 3) f.a = "A";
@@ -256,7 +266,7 @@ struct Sim {
         // right flanks, then an extra contig that holds off-target regions and noise
         for (size_t ci = 0; ci < contigs.size(); ci++) {
             int right = 1300;
-            for (size_t k = 0; k < loci.size(); k++) if (loci[k].contigIndex == (int)ci) right = LEFTFLANK[(d[HDR + k * LREC + L_FIELDS] >> 4) & 15];
+            for (size_t k = 0; k < loci.size(); k++) if (loci[k].contigIndex == (int)ci) right = flankLength((d[HDR + k * LREC + L_FIELDS] >> 4) & 15);
             contigs[ci].seq += randomSeq(5000 + ci * 17, right);
         }
         nExtra = EXTRA_LOCI[H(H_NOISE) >> 4] * CATALOG_SCALE[(H(H_EXT) >> 4) & 3];
@@ -906,6 +916,11 @@ void dfz_compare(const Case &c, const Run &a, const Run &b, vector<Finding> &out
     // a region written end-start is outside what the original defines (README.md, "Input constraints"): the
     // outputs say nothing about the rewrite. A program dying from a signal still counts
     if (c.tags.count("inverted-region") && !died(a) && !died(b)) out.clear();
+    // On the builds with sanitizers: htslib joins a reader thread a second time after a failed read of a reads file
+    // that is not valid, in both programs (constraints/malformed-reads-file). When both die with that report, the two
+    // reports are removed; one program alone dying that way still counts.
+    auto joining = [](const Finding &f) { return f.atoms.compare(0, 7, "report_") == 0 && f.atoms.find(":[asan_Joining]") != string::npos; };
+    if (std::count_if(out.begin(), out.end(), joining) == 2) out.erase(std::remove_if(out.begin(), out.end(), joining), out.end());
 }
 
 bool dfz_normalize(const Case &, const string &file, int, string &content) {

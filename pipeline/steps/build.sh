@@ -17,7 +17,7 @@
 # A flavour is nothing but a compiler and flags handed to the target's own build command; the pipeline does not know
 # how a target is built. SIDES="a b" restricts the per-side steps.
 source "$(dirname "$0")/../env.sh"
-STEPS=${STEPS:-fetch deps ref refp fuzz cov san harness data}
+STEPS=${STEPS:-fetch deps ref refp fuzz $([ "$CFG_FUZZ_SANITIZERS" = 1 ] && echo fuzzsan) cov san harness data}
 SIDES=${SIDES:-a b}
 side_name() { [ "$1" = a ] && echo "$CFG_A_NAME" || echo "$CFG_B_NAME"; }
 side_patches() {  # absolute paths of the side's patches
@@ -35,6 +35,8 @@ build_flavour() {  # build_flavour <flavour> [nopatch|onlypatched]: the caller e
   done
   [ ${#pids[@]} -gt 0 ] && wait "${pids[@]}"
 }
+# AddressSanitizer, UndefinedBehaviorSanitizer and the C++ library's assertions (flavours san and fuzz)
+SAN_C="-fsanitize=address,undefined -fno-omit-frame-pointer -g $CFG_SAN_FLAGS"; SAN_CXX="$SAN_C -D_GLIBCXX_ASSERTIONS"; SAN_LD="-fsanitize=address,undefined"
 for s in $STEPS; do echo "=== $s"; case $s in
 fetch)
   for x in $SIDES; do n=$(side_name $x); X=${x^^}; repo=CFG_${X}_REPO; commit=CFG_${X}_COMMIT
@@ -53,11 +55,15 @@ ref)
 refp)
   export DFZ_CC=$CFG_REF_CC DFZ_CXX=$CFG_REF_CXX DFZ_CFLAGS= DFZ_CXXFLAGS= DFZ_LDFLAGS=
   build_flavour refp onlypatched; [ -z "$(side_patches a)$(side_patches b)" ] && echo "(no patches)" ;;
-fuzz)
+fuzz|fuzzsan)
+  # fuzzsan: edge coverage for the fuzzers plus the sanitizers of the san flavour, for campaigns run with SAN=1. A
+  # replay of the kept inputs on sanitizer builds (the sanitize step) misses undefined behaviour that depends on a
+  # value and not on the path taken, because the fuzzers keep an input for the path it takes.
   export AFL_PATH=$AFL_ROOT AFL_QUIET=1
   export DFZ_CC=$AFL_ROOT/afl-clang-fast DFZ_CXX=$AFL_ROOT/afl-clang-fast++ DFZ_CFLAGS= DFZ_CXXFLAGS= DFZ_LDFLAGS=
-  build_flavour fuzz
-  for x in $SIDES; do n=$(side_name $x); [ -x "$T/bin/${n}_fuzz" ] && echo "$n edges: $(AFL_DUMP_MAP_SIZE=1 "$T/bin/${n}_fuzz")"; done ;;
+  [ "$s" = fuzzsan ] && export DFZ_CFLAGS="$SAN_C" DFZ_CXXFLAGS="$SAN_CXX" DFZ_LDFLAGS="$SAN_LD"
+  build_flavour "$s"
+  for x in $SIDES; do n=$(side_name $x); [ -x "$T/bin/${n}_$s" ] && echo "$n edges: $(ASAN_OPTIONS=detect_leaks=0 AFL_DUMP_MAP_SIZE=1 "$T/bin/${n}_$s")"; done ;;
 cov)
   # covshim.o: writes the profile when the program dies by a signal (harness/covshim.c)
   clang -O1 -c "$DFZ_ROOT/pipeline/harness/covshim.c" -o "$T/build/covshim.o"
@@ -69,15 +75,18 @@ cov)
 san)
   # [build] san_flags of the target: checks to leave out, each with its reason in the target's README. A build stops
   # at the first report, so a report that every run meets hides everything behind it.
-  export DFZ_CC=clang DFZ_CXX=clang++ DFZ_CFLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer -g $CFG_SAN_FLAGS" \
-         DFZ_CXXFLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer -g -D_GLIBCXX_ASSERTIONS $CFG_SAN_FLAGS" DFZ_LDFLAGS="-fsanitize=address,undefined"
+  export DFZ_CC=clang DFZ_CXX=clang++ DFZ_CFLAGS="$SAN_C" DFZ_CXXFLAGS="$SAN_CXX" DFZ_LDFLAGS="$SAN_LD"
   build_flavour san ;;
 harness)
   H=$DFZ_ROOT/pipeline/harness; A=$TARGET_DIR/$CFG_ADAPTER
   FLAGS="-std=c++17 -O2 -I$H -I$TARGET_DIR"
   # feedback guards of the harness: 16384 virtual edges + both programs' maps, rounded up to a power of two
   need=16384
-  for x in a b; do n=$(side_name $x); [ -x "$T/bin/${n}_fuzz" ] && need=$(( need + ($(AFL_DUMP_MAP_SIZE=1 "$T/bin/${n}_fuzz") + 63) / 64 * 64 )); done
+  for x in a b; do n=$(side_name $x); m=0   # the larger of a side's fuzz and fuzzsan maps
+    for fl in fuzz fuzzsan; do   # (a program that prints its map size ends with a non-zero status)
+      [ -x "$T/bin/${n}_$fl" ] && { k=$(ASAN_OPTIONS=detect_leaks=0 AFL_DUMP_MAP_SIZE=1 "$T/bin/${n}_$fl" || true); [ "${k:-0}" -gt "$m" ] && m=$k; }
+    done
+    need=$(( need + (m + 63) / 64 * 64 )); done
   DFZ_GUARDS=65536; while [ $DFZ_GUARDS -lt $need ]; do DFZ_GUARDS=$(( DFZ_GUARDS * 2 )); done
   export DFZ_GUARDS; echo $DFZ_GUARDS > "$T/bin/guards"; echo "feedback guards: $DFZ_GUARDS (needed $need)"
   g++ $FLAGS "$H/tool.cpp" "$A" -o "$T/bin/dfz_tool" $CFG_HARNESS_LIBS; echo "dfz_tool rc=$?"

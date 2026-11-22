@@ -11,9 +11,9 @@ step checks them on every run in one direction: an outcome listed here that does
 warning in `COVERAGE.md` and counted as reachable. Entries marked *host* depend on the machine (CPU features, CPU
 count), not on the input.
 
-How far to trust it: of the 1,428 outcomes first listed, 145 (10.2%) have since been executed and removed: 47 when
+How far to trust it: of the 1,428 outcomes first listed, 146 (10.2%) have since been executed and removed: 47 when
 146 seeds for newly found input features were added, 90 in a ten-minute campaign of five fuzzers, 8 in a one-hour
-campaign with a larger generator. 1,283 remain.
+campaign with a larger generator, 1 by a literal of 2,100 bases. 1,282 remain.
 So the list still contains wrong entries, most likely among the "defensive check" and *host* reasons, and the
 "reachable" coverage figure is an upper estimate; the figure for all code, shown next to it, does not depend on the
 list.
@@ -45,7 +45,7 @@ Facts most verdicts rest on:
 | both | `GraphAlignment.cpp` 48, 81-111, 135, 174, 213 | `numMatches`, `getIndexesOfNode`, `<<`, shrink throws | `numMatches`' only caller has no caller |
 | eh | `KmerIndex.cpp` 50, 205-247, 311-335 | copy/move, `==`, `encode`, `kmers`, `numUniqueKmers*` | callers are `KmerIndexOperations.cpp` (not linked) and tests |
 | nueh | `KmerIndex.cpp` 1062-1243 | copy/move, `==`, `encode`, string queries, `kmers`, `numUnique*` | only `verification/` probes call them |
-| nueh | `KmerIndex.cpp` 357, 367, 626:27, 663, 675-688, 728-739, 848-861, 935, 1026-1045, 1173-1186 | k-mer length guards, `kReferenceLayout`, checks of an index the program built itself | fixed k-mer lengths; self-built data |
+| nueh | `KmerIndex.cpp` 357, 367:21, 626:27, 663, 675-688, 728-739, 848-861, 935, 1026-1045, 1173-1186 | k-mer length guards, `kReferenceLayout`, checks of an index the program built itself | fixed k-mer lengths; self-built data. (364 and 367:13, a node of more than 2,048 bases, were on this list and are reached by a long literal) |
 | nueh | `KmerIndex.cpp` 962, 999, 973-974, 1010-1011 | scalar tail loops | the SSE2 loop already runs to the padded end (x86 build) |
 | both | `LinearAlignment.cpp`, `Operation.cpp`, `OperationOperations.cpp`, `LinearAlignmentOperations.cpp` | missing-base cases, the CIGAR character switch, consistency failures, `prettyPrint`, `getSequencesForEachOperation` | string CIGARs are only `nM`, `1M`, `nS`; consistency checks are defensive |
 | both | `SequenceOperations.cpp` 40-58, 119-174 | split helpers, `checkIfNucleotideReference*`, `expandReferenceSymbol` throw | no callers; every node symbol is in the expansion table |

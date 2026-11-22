@@ -84,7 +84,7 @@ sj = os.path.join(work, "recheck", tag, "summary.json")
 check(os.path.isfile(sj), "the differences were rechecked (recheck/<tag>/summary.json)")
 if os.path.isfile(sj):
     s = json.load(open(sj))
-    check(s["stored"] == s["differs"] + s.get("fuzz_only", 0) + s["flaky"] + s.get("timeout", 0) + s.get("memory", 0) + s["gone"], "every stored signature has a status", str(s))
+    check(s["stored"] == s["differs"] + s.get("fuzz_only", 0) + s.get("report", 0) + s["flaky"] + s.get("timeout", 0) + s.get("memory", 0) + s["gone"], "every stored signature has a status", str(s))
     rows = [l.rstrip("\n").split("\t") for l in open(os.path.join(work, "recheck", tag, "remaining.tsv"))][1:]
     bad = [r[4] for r in rows if not os.path.isfile(os.path.join(work, "recheck", tag, r[4]))]
     check(not bad, f"every remaining difference has its input ({len(rows)} listed)", " ".join(bad[:5]))

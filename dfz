@@ -33,12 +33,13 @@ replay|export|decode|run)
   # one input: show the differences (replay) / write a witness directory (export <input> <dir>) / only write its input
   # files and print its options, running nothing (decode <input> <dir>); many inputs: the counts by exit class, the
   # largest memory and the longest time of both programs (run <files or directories>).
-  # On the reference builds; BUILD=refp|fuzz|cov|san takes another flavour (PATCHED=1 is BUILD=refp).
+  # On the reference builds; BUILD=refp|fuzz|fuzzsan|cov|san takes another flavour (PATCHED=1 is BUILD=refp).
   source "$ROOT/pipeline/env.sh"
   b=${BUILD:-ref}; [ -n "${PATCHED:-}" ] && b=refp
   export DFZ_A=$T/bin/${CFG_A_NAME}_$b DFZ_B=$T/bin/${CFG_B_NAME}_$b DFZ_DATA=$T/data DFZ_SURFACE=${SURFACE:?} DFZ_WORK=${TMPDIR:-/tmp}/dfz_one_$$
   [ -x "$DFZ_A" ] || DFZ_A=$T/bin/${CFG_A_NAME}_ref; [ -x "$DFZ_B" ] || DFZ_B=$T/bin/${CFG_B_NAME}_ref
-  [ "$b" = san ] && export DFZ_CHILD_ENV="ASAN_OPTIONS=abort_on_error=1:detect_leaks=0:handle_abort=1:symbolize=1;UBSAN_OPTIONS=halt_on_error=1:abort_on_error=1:print_stacktrace=1"
+  # builds with sanitizers: their options, and the limits scaled (DFZ_TIMEOUT_MS / DFZ_MEMORY_MB given by the caller win)
+  if [ "$b" = san ] || [ "$b" = fuzzsan ]; then dfz_san_env; fi
   exec "$T/bin/dfz_tool" "$cmd" "${rest[@]}";;
 *) echo "unknown command $cmd" >&2; exit 2;;
 esac

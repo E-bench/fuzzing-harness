@@ -20,9 +20,9 @@ temporary patches of v5.0.0, three of the rewrite, below) with the present gener
 
   | Stored signatures | |
   |---|---|
-  | 213 | no longer differ; 4 of them were a time limit that the rewrite passed while other replays ran, and not when replayed alone |
-  | 455 | only v5.0.0 passed the 20-second limit; put off, not examined one by one |
-  | 3 | only the rewrite passed the limit in the recheck, also in its replay at the end of the job. On an idle machine the rewrite ends first on all three (1.9 s against 4.3 s of v5.0.0, 0.5 against 2.6, 1.4 against 3.1) with equal output and equal CPU time (4.4 against 4.2 s, 2.5 against 2.6, 3.2 against 3.1). What kept the recheck's job busy was not found |
+  | 208 | no longer differ; 3 of them were a time limit that the rewrite passed while other replays ran, and not when replayed alone |
+  | 462 | only v5.0.0 passed the 20-second limit; put off, not examined one by one |
+  | 1 | only the rewrite passed the limit in the recheck, also in its replay at the end of the job (48.5 s on the clock and 361 s of CPU, against 3.7 s). Run directly the rewrite ends first in every setting tried: 0.3 to 0.4 s on the clock with 8 threads, the CPU time of v5.0.0 and equal output, in 300 runs on the recheck's machine and on two others. So the recheck's figure is not a property of the program; what in the recheck's job produces it was not found |
 
   One stored input did differ and became an input constraint: a negative `--region-extension-length`
   ([`constraints/negative-region-extension`](constraints/negative-region-extension/)). The earlier campaigns
@@ -97,11 +97,13 @@ product code is changed. NuExpansionHunter's optional libraries (libdeflate, ISA
 ([`adapter.cpp`](adapter.cpp), `H_*`, `L_*`). Zero is the ordinary case everywhere.
 
 - **Genome.** One contig per locus or all loci on one contig at a chosen spacing (4,000 bp down to 0, so that their
-  read-extraction regions overlap); autosome, X or Y; `chr1` or `1` naming; flank lengths from 2,000 down to 0 bp;
+  read-extraction regions overlap); autosome, X or Y; `chr1` or `1` naming; flank lengths from 2,000 down to 0 bp, and
+  10,000 together with a region extension of 10,000 (flank nodes beyond the range of 16-bit alignment scores);
   flanks with N runs, soft-masked, with IUPAC codes, or continuing the repeat; flanks that are a tandem of one
   37- or 41-base unit (few distinct k-mers), and a right flank that repeats the left one (a duplication).
 - **Catalog.** 28 structure templates over 32 motifs (1 to 12 bases, some with IUPAC codes), repeats `*` and `+`,
-  swaps, optional sequences, literals; the first locus's structure 4, 16 or 32 times over (up to 63 repeats in
+  swaps, optional sequences, literals of 1 to 26 bases and one of 2,100 (a graph node longer than the rewrite's
+  compact k-mer index holds); the first locus's structure 4, 16 or 32 times over (up to 63 repeats in
   one locus, a graph of more than 64 nodes; optional sequences and swaps only in the first copy); `Repeat`, `RareRepeat`, `SmallVariant`, `SMN`; off-target regions; `TargetRegion`,
   `VariantId`, `ErrorRate`, `LikelihoodRatioThreshold`, `MinimalLocusCoverage`; string or array forms; 30 malformed
   variants (missing regions or types, reversed or out-of-range regions, unknown contigs, bad structure syntax,
@@ -209,6 +211,9 @@ the one tested here.
   all the same ("requires 4 byte alignment"). No effect on x86 has been seen or is expected. v5.0.0 does not call
   these helpers from its own code. The check is left out because a build stops at its first report, and this one
   would hide everything behind it.
+- **Leaks are not looked for.** The sanitizer runs have the leak check off (`[run] asan_options`): memory that a
+  program still holds when it ends. No run with the check on has been made, so nothing is known about leaks in
+  either program.
 - **Memory on structures with many `N` literals.** On the loci of the limit above the rewrite needs 1.5 to 1.9 times
   the memory of v5.0.0 (7 literals: 1.2 to 4.2 GB against 0.7 to 2.2 GB). On every seed input it needs less (at
   most 59 MB against 172 MB).
@@ -243,8 +248,10 @@ input and on the outcome; anything else that differs on such an input still coun
 |---|---|---|
 | an invalid value for an option only the rewrite has (tag `rewrite-option-error`; generated with `rewrite_option_errors = 1`) | the original succeeds, the rewrite ends with an error | the rewrite must reject the value, and the original never sees the option |
 | a region written end-start (tag `inverted-region`; generated with `inverted_regions = 1`) | every difference except a program dying from a signal | an input constraint (above): the original's output is not defined |
+| a reads file that is not valid, on the builds with sanitizers | both programs dying with AddressSanitizer's report "Joining already joined thread" | htslib's reader, the same in both ([`constraints/malformed-reads-file`](constraints/malformed-reads-file/)); one program alone dying that way still counts |
 
-With the default options neither input is generated, so nothing is removed.
+With the default options the first two inputs are not generated, so only the third rule removes anything, and only
+in a campaign on the builds with sanitizers.
 
 Not exemptions, but normalisation (`dfz_normalize`): record order and compression of the realigned BAM, and the
 unused nibble of odd-length reads. The adapter compares decoded records as a multiset, so only these aspects are

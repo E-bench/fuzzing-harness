@@ -42,6 +42,15 @@ timeout_ms = 20000
 # loci; its longest run takes 5.2 s). What passes this limit is a program allocating without bound (README.md,
 # limits). A campaign job needs this much memory per CPU.
 memory_mb = 1024
+# Campaigns fuzz on the builds with sanitizers (flavour fuzzsan; SAN=0 on a campaign's command line takes the plain
+# ones). On those builds the limits are multiplied: measured on the seeds, the original needs up to 7 times the
+# time and memory of its plain build.
+sanitizers = true
+san_slower = 5
+san_larger = 4
+# Sanitizer checks left out at run time. Leaks: memory still held when a program ends is not looked for; no run
+# with the leak check has been made (README.md, notes).
+asan_options = "detect_leaks=0"
 exit = "class"                      # ok / error exit / signal / timeout must agree; exit codes are not compared
 error_line = "last"                 # a failed run's last output line goes into the signature (digits and paths masked)
 error_strip = "^[0-9T:,-]+|^terminate called.*|^ *what\\(\\): *"   # log time stamps and the C++ runtime's abort banner

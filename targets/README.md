@@ -12,10 +12,13 @@ rewrite. The pipeline reads three things from it.
 | | `patches = ["patches/<file>.diff", ...]` | temporary patches of this side that hide known bugs (`docs/WORKFLOW.md`); applied to the `fuzz`, `cov` and `refp` builds, never to `ref` |
 | `[build]` | `deps`, `program`, `data` | shell commands (below) |
 | | `adapter`, `harness_libs` | the adapter source (default `adapter.cpp`) and extra link flags for the harness |
-| | `san_flags` | extra compiler flags of the sanitizer builds, to leave a check out (`-fno-sanitize=alignment`); the reason belongs into the target's README |
+| | `san_flags` | extra compiler flags of the builds with sanitizers (`san`, `fuzzsan`), to leave a check out (`-fno-sanitize=alignment`). Which checks are off is the target's choice, here and in `asan_options` below; the reason belongs into the target's README |
 | | `ref = { cc, cxx }` | the compiler of the reference builds |
 | `[run]` | `argv`, `argv_a`, `argv_b` | the command line: common part, then per side |
 | | `timeout_ms`, `memory_mb`, `env` | time limit per program run; limit of its resident memory (default 0 = none). The harness ends a run that passes one, and the run's exit class is `timeout` or `memory`. Set both: without a memory limit an input that makes a program allocate without bound meets the machine's out-of-memory killer, which ends any process of the job; extra environment |
+| | `sanitizers` | `true`: campaigns fuzz on the builds with sanitizers (`fuzzsan`) unless told otherwise (`SAN=0`); default `false`, and `SAN=1` on a campaign's command line asks for it |
+| | `san_slower`, `san_larger` | by how much the time and the memory limit are multiplied for a run on a build with sanitizers (defaults 5 and 4); measure them on the seeds |
+| | `asan_options`, `ubsan_options` | runtime options of the sanitizers for this target, such as a check to leave out (`detect_leaks=0`). The pipeline itself only sets how a report ends a run |
 | | `exit` | `"class"` (default) or `"code"` |
 | | `error_line`, `error_strip`, `error_prefix` | which line of a failed run's output goes into the signature, and what to cut from it |
 | | `compare_on_error` | compare output files also when both programs exit with an error (default: no) |
@@ -46,6 +49,7 @@ What a run mode is (for example which analysis mode of a program is tested) is d
   | `ref` | `[build] ref` | rechecking differences; the builds that witnesses refer to |
   | `refp` | as `ref`, with the side's patches (`DFZ_PATCHES`) | rechecking what still differs with the known bugs patched away |
   | `fuzz` | AFL++'s `afl-clang-fast(++)` | edge coverage for the fuzzers' feedback |
+  | `fuzzsan` | the same with the flags of `san` | fuzzing with sanitizers (`SAN=1`): every executed input is checked. Built when `[run] sanitizers` is set, or with `STEPS=fuzzsan` |
   | `cov` | clang with `-fprofile-instr-generate -fcoverage-mapping -fprofile-update=atomic`, plus `covshim.o` at link time | the coverage report |
   | `san` | clang with `-fsanitize=address,undefined -g` and `-D_GLIBCXX_ASSERTIONS` | stopping at memory errors and undefined behaviour that leave the output unchanged (`./dfz sanitize`) |
 

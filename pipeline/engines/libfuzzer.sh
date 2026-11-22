@@ -7,7 +7,7 @@ engine_run() {  # <harness> <seeds> <out> <ncpu> <seconds> <max_len> <min_len> <
   mkdir -p "$out/corpus"
   [ -n "$dict" ] && extra="-dict=$dict"
   ( cd "$out" && "$h" "$out/corpus" "$seeds" -fork="$n" -ignore_crashes=1 -ignore_timeouts=1 -ignore_ooms=1 -max_len="$maxlen" -len_control=0 \
-      -timeout=300 -rss_limit_mb=0 -max_total_time="$dur" -print_final_stats=1 $extra > "$out/log_0.txt" 2>&1; echo "libfuzzer ended rc=$?" ) &
+      -timeout="${ENGINE_TIMEOUT_S:-300}" -rss_limit_mb=0 -max_total_time="$dur" -print_final_stats=1 $extra > "$out/log_0.txt" 2>&1; echo "libfuzzer ended rc=$?" ) &
 }
 engine_stats() {  # the fork-mode log prints "#<execs>: cov: ... ft: ... corp: <n> ..." lines
   local e; e=$(grep -a -o '^#[0-9]*:' "$1/log_0.txt" 2>/dev/null | tail -1 | tr -d '#:')

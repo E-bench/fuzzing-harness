@@ -98,6 +98,9 @@ Notes:
   builds. A stored difference that does not show there every time is replayed on the instrumented builds as well:
   - **fuzz-only**: every time there, not on the reference builds. The difference depends on the build (the compiler,
     its flags); it is listed with the ones to account for.
+  - **report**: a program died with a report of a sanitizer or of a failed assertion, on the builds with sanitizers
+    that the campaign fuzzed on ("Memory errors and undefined behaviour" below). A defect of that program, whether
+    or not the other one has it too; it is listed with the ones to account for.
   - **timeout:\<side\>**: the difference is that this program passed the time limit and the other did not. A time
     limit is the harness's doing, so these are a class of their own. They are looked at after the differences in
     output, not dropped: one program can end in an error at once while the other is still computing towards the
@@ -137,6 +140,21 @@ compiler. So every input of a campaign (seeds, corpora, stored differences) is a
 ```
 
 (`./dfz replay <target> SURFACE=<s> BUILD=san <input>` runs one input on these builds.)
+
+The replay only sees the inputs the fuzzers kept, and they keep an input for the path it takes. Undefined behaviour
+that depends on a value (an overflow, an index one too large) can happen on thousands of executed inputs and on
+none of the kept ones. A campaign can therefore fuzz on builds with sanitizers:
+
+```bash
+./dfz submit <target> TAG=<campaign> SAN=1         # default: [run] sanitizers of the target; needs the fuzzsan builds
+```
+
+A program that dies with a report of a sanitizer or of a failed assertion is then a finding by itself, also when
+the other program dies the same way. Its signature names the report and its place (`report_<side>:[...]`), and the
+recheck gives it the status `report`. These builds are several times slower and larger, so the time and memory
+limits are multiplied (`[run] san_slower`, `san_larger`) and a campaign runs fewer test cases; differences in output
+are still judged on the reference builds. Which checks are left out is configured by the target (`[build]
+san_flags`, `[run] asan_options`, `ubsan_options`), each with its reason in the target's README.
 
 `work/<target>/sanitize/<campaign>/findings.tsv` has one row per program, kind of error and place in the source,
 with the number of inputs that stop there, the sanitizer's report (`reports/`) and one input (`inputs/`). Rows are
