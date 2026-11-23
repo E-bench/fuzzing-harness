@@ -3,7 +3,7 @@
 | Side | Program | Source | Commit |
 |---|---|---|---|
 | a `eh` | ExpansionHunter v5.0.0 | https://github.com/Illumina/ExpansionHunter | `9f5db1d` (tag v5.0.0) |
-| b `nueh` | NuExpansionHunter | https://github.com/BioCode-Commons/NuExpansionHunter | `96bdca4` (main, 2026-11-21) |
+| b `nueh` | NuExpansionHunter | https://github.com/BioCode-Commons/NuExpansionHunter | `7c738d5` (NuEH-v0.2, 2026-11-21) |
 
 NuExpansionHunter states that for every input on which v5.0.0 has defined behaviour it writes the same VCF and JSON
 bytes and a realigned BAM with the same header and the same multiset of decoded records
@@ -63,6 +63,32 @@ temporary patches of v5.0.0, three of the rewrite, below) with the present gener
   On the other surfaces 17 to 19. The heaviest seed takes v5.0.0 5.2 s and 174 MB, the rewrite 0.6 s and 65 MB.
 - **Next:** the inputs the generator does not make; the 455 time limits of v5.0.0; once coverage no longer rises,
   one longer campaign that fuzzes on the sanitizer builds.
+
+### NuExpansionHunter v0.2 (`7c738d5`)
+
+One campaign of the full matrix (seven fuzzers, four surfaces, 28 runs of one hour, 20.5 million test cases) on the
+rewrite's `NuEH-v0.2` branch, with the patches below; the numbers of `main5` above are for `96bdca4`. **Based on
+this fuzzing the two programs agree: no stored input differs in an output file or in how a program ends.** Of 683
+signatures, 358 no longer differ, 257 are time limits that only v5.0.0 passed (put off), and the rest are limits
+passed under the recheck's load that do not repeat when replayed alone on an idle node.
+
+Two observations are not differences in output, and neither is undefined behaviour of the programs:
+
+- **Resource use.** On a locus whose structure carries a long literal the rewrite peaks at 1,452 MiB against 923
+  MiB for v5.0.0, in the same time and with identical `r.vcf` and `r.json`. The input is valid for both, so this is
+  a difference in how much memory a run needs, not in what it computes; under the target's 1024 MiB run limit the
+  rewrite passes the limit and the original does not, which is how the input was found.
+- **An input outside the original's domain.** A short `--region-extension-length` with a locus at a contig start
+  gives `chr1:-1-0`, which v5.0.0 refuses with `Invalid region string`; the rewrite, given a prepared catalog cache
+  (`--prepare-catalog-cache` with `--catalog-cache`), writes `r.vcf` and `r.json` instead. The original defines no
+  behaviour for a region before the contig, so this says nothing about the rewrite's fidelity.
+
+The replay of 143,985 inputs on the sanitizer builds reports the htslib thread error of
+[`constraints/malformed-reads-file`](constraints/malformed-reads-file/) on 2,474 of them, in both programs, and
+nothing else.
+
+Coverage: branches 2,271 / 2,380 (95.4%) for v5.0.0 and 4,857 / 5,415 (89.7%) for the rewrite; of the files the
+branch changes, 2,804 / 3,013 lines (93.1%).
 
 ## What is run
 

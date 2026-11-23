@@ -16,7 +16,7 @@ patches = ["patches/eh-0001-worker-thread-exceptions.diff", "patches/eh-0002-gen
 name = "nueh"
 title = "NuExpansionHunter"
 repo = "https://github.com/BioCode-Commons/NuExpansionHunter"
-commit = "96bdca4e854e3e4bd6c04f3cf211c633079f08d5"      # main, 2026-11-21
+commit = "7c738d510c067c799ba53e9fabe6b5738c8dd0bc"      # NuEH-v0.2
 patches = ["patches/nueh-0001-empty-catalog-memcpy.diff", "patches/nueh-0002-variant-id-count.diff",
            "patches/nueh-0003-fragment-origins-overflow.diff"]
 
