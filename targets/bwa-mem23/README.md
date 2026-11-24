@@ -70,10 +70,25 @@ cd differences/repeat-read-unmapped-vs-mapped
 MEM2=/path/to/bwa-mem2 MEM3=/path/to/bwa-mem3 ./run.sh     # prints DIFFERENT and the two records
 ```
 
+## Ground truth, and the two defects
+
+bwa 0.7.19 (built from source, its own index format) **maps** the witness read (`q0 0 chr1 421 0`). So bwa-mem2's
+"unmapped" is a **bwa-mem2 deviation from bwa**, and the rewrite under `--compat=bwa-mem2` emits bwa's answer
+instead of bwa-mem2's, which its own rule says it must not: `--compat=bwa-mem2` reproduces bwa-mem2, `--compat=bwa-mem`
+reproduces bwa. One input class therefore exposes two defects:
+
+- **bwa-mem2 v2.2.1** reports an exact-match read that lies entirely inside a tandem repeat as unmapped; bwa 0.7.19
+  aligns it. (Its charter is bwa-identical output.)
+- **bwa-mem3 `--compat=bwa-mem2`** reproduces bwa's mapped record here instead of bwa-mem2's unmapped one, so the
+  compat target is not honoured on this input.
+
+Both are deterministic: same output on every run, at every reference size tested (1.2 kb to 10 Mb), independent of
+`-T` (1 to 60), `-c` (50 to 50,000), `-K` and of whether the repeat has 300 or 2,500,000 copies.
+
 ## What is not established
 
-- **Which behaviour is correct.** The divergence is reproducible and deterministic; whether the compat mode should
-  reproduce the original's "unmapped" decision or the rewrite's alignment is for the rewrite's authors to say.
+- **Whether bwa-mem2's unmapped decision is a bug or an intentional conservative choice** is for its maintainers to
+  say; that it differs from bwa 0.7.19 is measured.
 - **Real genomes.** The references are synthetic and repeat-rich; no WGS sample was run. Tandem repeats of this
   length are common in real genomes, but the effect on real data is unmeasured.
 - **Threads and batching.** Only `-t 1`; `-K` was held at `100000000` on both sides.
