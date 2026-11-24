@@ -55,6 +55,17 @@ repeat and the pair reaching unique sequence, the same decision still shows up o
 cases put both mates in the repeat; the pair is then consistent between the programs. This is the one place where
 the trigger description above is narrower than the campaigns.
 
+## The differing reads
+
+Two artefacts in this directory hold every case the campaigns found:
+
+- **`all-findings.tar.xz`** (21 MB, 4,622 cases) — for each case a directory
+  `findings<N>/<worker>_<case>/` with `ref.fa`, `reads.fq`, `a.sam` (bwa-mem2 v2.2.1), `b.sam`
+  (bwa-mem3 `--compat=bwa-mem2`, same options) and `diff.txt` (the options the case was found with and the first
+  differing record). Unpack with `tar xf all-findings.tar.xz`.
+- **`findings-manifest.tsv`** — one row per case: campaign, case id, difference class, options, single/paired,
+  reference length, read count, and the sizes of the two input files, so the set can be filtered without unpacking.
+
 ## Differences
 
 - [`differences/repeat-read-unmapped-vs-mapped`](differences/repeat-read-unmapped-vs-mapped/) — minimal witness: a
