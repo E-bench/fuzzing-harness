@@ -1,0 +1,75 @@
+# bwa-mem3 `--compat=bwa-mem2` against bwa-mem2 v2.2.1
+
+bwa-mem3 v0.18.0 promises "byte-for-byte identical alignment records to a specific upstream (bwa-mem2 v2.2.1),
+`@PG` excluded and `-t`/`-K` matched". This target compares the two programs end to end on generated references
+and reads, and records where they differ.
+
+It is not yet a pipeline target: there is no `target.toml` or adapter, and the differences below were found with a
+stand-alone differential loop (generate reference and reads, run both programs, drop the `@` header lines, compare
+the remaining SAM records). Adding it to the pipeline needs the adapter and instrumented builds, see
+[`docs/WORKFLOW.md`](../../docs/WORKFLOW.md).
+
+## What is run and compared
+
+| | |
+|---|---|
+| side a | bwa-mem2 **v2.2.1**, the official `x64-linux` prebuilt binary (dispatches to AVX-512 on these nodes) |
+| side b | bwa-mem3 **v0.18.0**, built from source with clang 20.1.6 (needs `libdeflate` and, at run time, `libomp`) |
+| index | built by **bwa-mem2 v2.2.1**; bwa-mem3's own index cannot be read by bwa-mem2, so it is never used |
+| command line | `mem [-a] [-M] [-Y] [-P] [-L n] [-D x] [-w n] [-r x] [-c n] -t 1 -K 100000000 <ref> <reads>` |
+| compared | every SAM record (header lines, including `@PG`, dropped); exit status |
+| surface | a generated reference (tandem repeats of unit 1-6, N runs, homopolymers, GC bias; 0.6-20 kb) and generated reads (single and paired, 20-300 bp, inserts 50-2500, 0-10% substitution errors, indels, N in reads, 15 option sets) |
+
+`-t 1` and `-K 100000000` are identical on both sides, which is what the compatibility claim asks for.
+
+## What was found
+
+**One cause, seen in two shapes.** When a **single-end read lies entirely inside a tandem repeat** the original
+reports it unmapped and the rewrite aligns it, at MAPQ 0; with `-a` the rewrite then lists all the alignments it
+found, which also changes the record count.
+
+| campaign | cases that differ | `unmapped-vs-mapped` | `record-count` |
+|---|---|---|---|
+| `findings2`, 384 cores, 20 min | 1,015 | 817 | 198 |
+| `findings3`, 384 cores, broader inputs | 2,078 (still growing) | 1,704 | 374 |
+
+No third kind of difference appeared in 3,000+ differing cases.
+
+**Trigger**, from 312 controlled cases in [`trigger-matrix.csv`](trigger-matrix.csv) (generator:
+`scripts/matrix.py`):
+
+| factor | cases that differ |
+|---|---|
+| read entirely inside the tandem repeat | 64 of 78 |
+| read crossing the repeat's edge into unique sequence | 0 of 78 |
+| single-end | 64 of 107 |
+| paired-end | 0 of 107 |
+| repeat copies 10 / 20 / 50 / 100 / 300 (inside + single subset) | 0/4, 1/10, 17/18, 22/22, 24/24 |
+
+Read length (30-150bp) and repeat unit length (1-6) do not change the outcome; from about 100 copies on, every
+such case differs.
+
+## Differences
+
+- [`differences/repeat-read-unmapped-vs-mapped`](differences/repeat-read-unmapped-vs-mapped/) — minimal witness: a
+  1.2 kb reference of one tandem repeat and one 50 bp single-end read, `ref.fa` + `reads.fq` + `run.sh` + both
+  programs' SAM output.
+- [`differences/repeat-read-with-all-alignments`](differences/repeat-read-with-all-alignments/) — the same decision
+  with `-a`: 2 records against 35.
+
+## Reproducing
+
+```sh
+cd differences/repeat-read-unmapped-vs-mapped
+MEM2=/path/to/bwa-mem2 MEM3=/path/to/bwa-mem3 ./run.sh     # prints DIFFERENT and the two records
+```
+
+## What is not established
+
+- **Which behaviour is correct.** The divergence is reproducible and deterministic; whether the compat mode should
+  reproduce the original's "unmapped" decision or the rewrite's alignment is for the rewrite's authors to say.
+- **Real genomes.** The references are synthetic and repeat-rich; no WGS sample was run. Tandem repeats of this
+  length are common in real genomes, but the effect on real data is unmeasured.
+- **Threads and batching.** Only `-t 1`; `-K` was held at `100000000` on both sides.
+- The campaigns were blind (no coverage feedback). A pipeline target with instrumented builds would explore more of
+  the CLI and of the reference structure.
