@@ -1,0 +1,13 @@
+case                               opts               mem2     mem3      bwa  mem2vs3      referee
+重复 read（最小 witness，默认选项）           []                    1        1        1  mem2!=mem3   bwa==mem3 (mem2 deviates)
+-a 记录条数                            []                    2        2        2  mem2!=mem3   bwa==mem3 (mem2 deviates)
+-z 50 记录条数                         ['-z', '50']          0      160      160  mem2!=mem3   bwa==mem3 (mem2 deviates)
+-A 2 -B 6 自定义打分                    ['-A', '2', '-      160      160      160  mem2!=mem3   bwa==mem3 (mem2 deviates)
+-D 0.8                             ['-D', '0.8']         2        2        2  mem2!=mem3   bwa==mem2 (mem3 deviates)
+-k 19                              ['-k', '19']         79       80       79  mem2!=mem3   bwa==mem2 (mem3 deviates)
+-L 1                               ['-L', '1']           0      400      400  mem2!=mem3   bwa==mem3 (mem2 deviates)
+-I 400                             ['-I', '400']       353      400      353  mem2!=mem3   bwa==mem2 (mem3 deviates)
+-h 5,1                             ['-h', '5,1']       356      400      356  mem2!=mem3   bwa==mem2 (mem3 deviates)
+-P                                 ['-P']                9       10        9  mem2!=mem3   bwa==mem2 (mem3 deviates)
+
+referee counts: {'bwa==mem3': 0, 'bwa==mem2': 0, 'bwa==both': 0, 'bwa!=both': 0, 'bwa==mem3 (mem2 deviates)': 5, 'bwa==mem2 (mem3 deviates)': 5}
