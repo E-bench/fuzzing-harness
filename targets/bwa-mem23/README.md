@@ -31,9 +31,9 @@ found, which also changes the record count.
 | campaign | cases that differ | `unmapped-vs-mapped` | `record-count` |
 |---|---|---|---|
 | `findings2`, 384 cores, 20 min | 1,015 | 817 | 198 |
-| `findings3`, 384 cores, broader inputs | 2,078 (still growing) | 1,704 | 374 |
+| `findings3`, 384 cores, broader inputs | 2,175 | 1,786 | 389 |
 
-No third kind of difference appeared in 3,000+ differing cases.
+No third kind of difference appeared in the 3,190 differing cases.
 
 **Trigger**, from 312 controlled cases in [`trigger-matrix.csv`](trigger-matrix.csv) (generator:
 `scripts/matrix.py`):
@@ -43,11 +43,17 @@ No third kind of difference appeared in 3,000+ differing cases.
 | read entirely inside the tandem repeat | 64 of 78 |
 | read crossing the repeat's edge into unique sequence | 0 of 78 |
 | single-end | 64 of 107 |
-| paired-end | 0 of 107 |
+| paired-end, both mates inside the repeat (that matrix's construction) | 0 of 107 |
 | repeat copies 10 / 20 / 50 / 100 / 300 (inside + single subset) | 0/4, 1/10, 17/18, 22/22, 24/24 |
 
 Read length (30-150bp) and repeat unit length (1-6) do not change the outcome; from about 100 copies on, every
 such case differs.
+
+The broader campaign also differs on 414 of its 2,175 cases that are paired-end (19%), so the paired-end 0 of 107
+above is specific to the matrix's construction, where the whole insert lies inside the repeat: with one mate inside a
+repeat and the pair reaching unique sequence, the same decision still shows up on that mate. The matrix's own paired
+cases put both mates in the repeat; the pair is then consistent between the programs. This is the one place where
+the trigger description above is narrower than the campaigns.
 
 ## Differences
 
